@@ -10,4 +10,4 @@
 - [nlohmann](https://github.com/nlohmann/json) (json)
 
 # Примечания
-- Использовать `Boost.asio` заместо обычных unix сокетов. Так проще будет прописать взаимодействие сервера и клиента.
+- Использовать [`Boost.asio`](https://www.boost.org/doc/libs/develop/doc/html/boost_asio/overview/posix/local.html) заместо обычных unix сокетов. Так проще будет прописать взаимодействие сервера и клиента.
