@@ -9,6 +9,8 @@
 using namespace boost::asio;
 using namespace boost::asio::local;
 
+#include "session.h"
+
 namespace IPC
 {
 	class Client : public std::enable_shared_from_this<Client>
@@ -18,12 +20,11 @@ namespace IPC
 		void sendMessage(const std::string&);
 
 	private:
+		void handleJson(std::shared_ptr<Session> session, boost::json::value&& json);
 		void connect(const std::string& endpoint);
-		void doRead();
 
 		stream_protocol::socket m_socket;
-		enum { max_length = 1024 };
-		char m_data[max_length];
+		std::shared_ptr<Session> m_session;
 	};
 
 } // namespace IPC

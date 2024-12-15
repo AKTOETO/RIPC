@@ -17,7 +17,7 @@ int main()
 		boost::asio::io_service service;
 
 		// Создание клиента и подключение к серверу
-		auto cl = std::make_shared<IPC::Client>(service, "/tmp/test1.com");
+		auto cl = std::make_shared<IPC::Client>(service, "/tmp/ripc_test1.com");
 		
 		std::thread th(read_input,cl);
 

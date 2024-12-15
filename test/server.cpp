@@ -6,8 +6,10 @@ int main()
 {
 	try{
 		io_service serv;
-		IPC::Server sr(serv, "/tmp/test1.com");
+		IPC::Server sr(serv, "test1.com");
+		sr.serve();
 		serv.run();
+		
 
 		//std::cin.get();
 

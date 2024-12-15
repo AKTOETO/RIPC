@@ -8,32 +8,14 @@ IPC::Client::Client(io_service& service, const std::string& endpoint)
 
 void IPC::Client::sendMessage(const std::string& msg)
 {
-	auto self(shared_from_this());
-	std::cout<<"sending msg\n";
-	async_write(m_socket, buffer(msg),
-		[this, self](boost::system::error_code ec, std::size_t /*length*/) {
-			if (!ec) {
-				std::cout << "Сообщение отправлено" << std::endl;
-				doRead(); // После отправки сообщения начинаем читать ответ
-			}
-			else {
-				std::cerr << "Error on send: " << ec.message() << std::endl;
-			}
-		});
+	boost::json::value json = {{"client", "hello"}, {"data", msg}};
+	m_session->send(std::move(json));
 }
 
-void IPC::Client::doRead()
+void IPC::Client::handleJson(std::shared_ptr<Session> session, boost::json::value&& json)
 {
-	auto self(shared_from_this());
-	m_socket.async_read_some(buffer(m_data, max_length),
-		[this, self](boost::system::error_code ec, std::size_t length) {
-			if (!ec) {
-				std::cout << "Received: " << std::string(m_data, length) << std::endl;
-			}
-			else {
-				std::cerr << "Error on receive: " << ec.message() << std::endl;
-			}
-		});
+	auto str = boost::json::serialize(json);
+	std::cout << "[Client]: что-то пришло:\n" << str << std::endl;
 }
 
 void IPC::Client::connect(const std::string& endpoint)
@@ -45,5 +27,10 @@ void IPC::Client::connect(const std::string& endpoint)
 	}
 	else {
 		std::cout << "Connected to server!" << std::endl;
+		// создаем сессия для общения с сервером
+		m_session = std::make_shared<Session>(std::move(m_socket),
+			std::bind(&Client::handleJson, this,
+				std::placeholders::_1, std::placeholders::_2));
+		m_session->start();
 	}
 }
