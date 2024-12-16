@@ -3,6 +3,10 @@
 #include <unistd.h>	// unlink
 #include <iostream> // cout
 
+#include <chrono>
+#include <thread>
+using namespace std::chrono_literals;
+
 IPC::Server::Server(io_service& service, const std::string& endpoint)
 	:m_endpoint("/tmp/ripc_" + endpoint), m_service(service)
 {
@@ -38,10 +42,18 @@ void IPC::Server::serve()
 
 void IPC::Server::handleJson(std::shared_ptr<Session> session, boost::json::value&& json)
 {
-	// TODO переделать это все. ЭТО ТЕСТОВЫЙ ВАРИАНТ
-	auto str = boost::json::serialize(json);
-	std::cout << "[Server]: Получено сообщение от клиента: " << str << std::endl;
 
+	// TODO переделать это все. ЭТО ТЕСТОВЫЙ ВАРИАНТ
+	std::this_thread::sleep_for(100ms);
+	std::cout << "[Server]: Получено сообщение от клиента: " << json << std::endl;
+
+	// TODO надо добавить преобращование в Request и 
+	// поиск нужного обработчика, затем создание Response 
+	// (передача в него id из Request)
+	// Передача Response и Request в найденный обработчик
+	// отправка Response обратно клиенту
+
+	//  УДАЛИТЬ
 	// Преобразуем boost::json::value в boost::json::object
 	if (json.is_object()) {
 		boost::json::object& obj = json.as_object();

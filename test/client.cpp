@@ -2,13 +2,22 @@
 
 #include <thread>
 
+using namespace std::chrono_literals;
+
 void read_input(std::shared_ptr<IPC::Client> client) {
-    std::string message;
-    while (std::getline(std::cin, message) && message!="exit") {
-        if (!message.empty()) {
-            client->sendMessage(message);
-        }
-    }
+	std::string message;
+	while (std::getline(std::cin, message) && message != "exit") {
+		if (!message.empty()) {
+			boost::json::object obj;
+			obj["msg"] = message;
+			//client->sendMessage(message);
+			client->call(IPC::Request("/privet/",
+				[](boost::json::value& json) {
+					std::cout << "Ответ пришел: " << json << std::endl;
+				}, obj)
+			);
+		}
+	}
 }
 
 int main()
@@ -18,10 +27,9 @@ int main()
 
 		// Создание клиента и подключение к серверу
 		auto cl = std::make_shared<IPC::Client>(service, "/tmp/ripc_test1.com");
-		
-		std::thread th(read_input,cl);
 
-		boost::asio::io_service::work w(service);
+		std::thread th(read_input, cl);
+
 		service.run();
 
 		th.join();

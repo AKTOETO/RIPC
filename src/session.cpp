@@ -1,6 +1,5 @@
-#include "session.h"
-
 #include <iostream>
+#include "session.h"
 
 namespace IPC
 {
@@ -37,7 +36,7 @@ namespace IPC
 			{
 				if (!err)
 					std::cout << "[Session]: Отправлены данные" << std::endl;
-				if (err == error::bad_descriptor)
+				else if (err == error::bad_descriptor)
 					std::cout << "[Session]: Сокет удален" << std::endl;
 				else
 					std::cerr << "[Session]: Ошибка при отправке данных: " << err.message() << std::endl;
