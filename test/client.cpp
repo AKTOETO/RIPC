@@ -11,10 +11,10 @@ void read_input(std::shared_ptr<IPC::Client> client) {
 			boost::json::object obj;
 			obj["msg"] = message;
 			//client->sendMessage(message);
-			client->call(IPC::Request("/privet/",
-				[](boost::json::value& json) {
-					std::cout << "Ответ пришел: " << json << std::endl;
-				}, obj)
+			client->call(IPC::Request("/privet/", std::move(obj)),
+				[](IPC::Request&& req) {
+					std::cout << "Ответ пришел: " << req.m_data << std::endl;
+				}
 			);
 		}
 	}

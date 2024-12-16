@@ -1,4 +1,5 @@
 #include "server.h"
+#include "request.h"
 
 #include <unistd.h>	// unlink
 #include <iostream> // cout
@@ -40,11 +41,9 @@ void IPC::Server::serve()
 		});
 }
 
-void IPC::Server::handleJson(std::shared_ptr<Session> session, boost::json::value&& json)
+void IPC::Server::handleJson(std::shared_ptr<Session> session,
+ boost::json::value&& json)
 {
-
-	// TODO переделать это все. ЭТО ТЕСТОВЫЙ ВАРИАНТ
-	std::this_thread::sleep_for(100ms);
 	std::cout << "[Server]: Получено сообщение от клиента: " << json << std::endl;
 
 	// TODO надо добавить преобращование в Request и 
@@ -53,19 +52,26 @@ void IPC::Server::handleJson(std::shared_ptr<Session> session, boost::json::valu
 	// Передача Response и Request в найденный обработчик
 	// отправка Response обратно клиенту
 
-	//  УДАЛИТЬ
-	// Преобразуем boost::json::value в boost::json::object
-	if (json.is_object()) {
-		boost::json::object& obj = json.as_object();
+	try
+	{
+		// корнвертируем json в Request
+		auto obj = IPC::Request::fromJson(json);
 
-		// Добавляем новую строку
-		obj["from"] = "server";
+		// TODO Переделать. Симуляция обработки запроса
+		{
+			// получаем словарь из data
+			auto &json_data = obj.m_data.as_object();
 
-		session->send(std::move(json));
+			// добавляем в него строку 
+			json_data["server"] = "from";
+		}
+
+		// Отправка ответа клиенту
+		session->send(IPC::Request::toJson(obj));
 	}
-	else {
-		std::cerr << "[Server]: Provided value is not a JSON object." << std::endl;
+	catch(const std::exception& e)
+	{
+		std::cerr << "[Server]: Ошибка при обработке запроса: " << e.what() << '\n';
 	}
-
 }
 
