@@ -15,14 +15,27 @@ namespace IPC
 		// тип данных для идентификатора каждого запроса
 		using IdType = uint64_t;
 
-		Request(IdType id);
+		// типы запросов
+		enum class Type : uint64_t
+		{
+			GET,	// получить данные
+			POST	// отправить данные
+		};
+
+		Type m_type;
+		IdType m_id;
+		std::string m_url;
+		boost::json::value m_data;
+		static IdType g_max_id;
+
+		Request(IdType id, Type type = Type::GET);
 		Request(const Request&) = delete;
 		Request(Request&& req);
 		Request& operator=(Request&& req);
 
-		Request(std::string&& url,
+		Request(std::string&& url, Type type = Type::GET,
 			boost::json::value&& data = {});
-		Request(const std::string& url,
+		Request(const std::string& url, Type type = Type::GET,
 			const boost::json::value& data = {});
 		// установка нового id 
 		static IdType getNextId()
@@ -46,6 +59,7 @@ namespace IPC
 			try
 			{
 				obj["uid"] = boost::json::value(req.m_id);
+				obj["type"] = static_cast<uint64_t>(req.m_type);
 				obj["url"] = req.m_url;
 				obj["data"] = req.m_data;
 			}
@@ -62,7 +76,7 @@ namespace IPC
 			if (!json.is_object())
 			{
 				std::cerr << "[Request]: переданный json не является объектом: " << json << std::endl;
-				return Request("", nullptr);
+				return Request("-error");
 			}
 			
 			std::cout<<"[Request]: Пытаемся преобразовать объект запроса из json"<<std::endl;
@@ -71,8 +85,8 @@ namespace IPC
 
 			try
 			{
-
 				Request req(obj.at("uid").to_number<IdType>());
+				req.m_type = static_cast<Type>(obj.at("type").to_number<uint64_t>());
 				req.m_url = obj.at("url").as_string();
 				req.m_data = obj.at("data");
 
@@ -85,12 +99,6 @@ namespace IPC
 			}
 			return Request(-1);
 		}
-
-		//static uint32_t m_index;
-		IdType m_id;
-		std::string m_url;
-		boost::json::value m_data;
-		static IdType g_max_id;
 	};
 }
 

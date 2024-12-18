@@ -5,7 +5,7 @@
 IPC::Client::Client(io_service& service, const std::string& endpoint)
 	: m_socket(service)
 {
-	connect(endpoint);
+	connect("/tmp/ripc_" + endpoint);
 }
 
 void IPC::Client::sendMessage(const std::string& msg)
