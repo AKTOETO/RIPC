@@ -18,6 +18,7 @@ namespace IPC
 		// типы запросов
 		enum class Type : uint64_t
 		{
+			ANY,	// любой тип запроса
 			GET,	// получить данные
 			POST	// отправить данные
 		};
@@ -28,14 +29,14 @@ namespace IPC
 		boost::json::value m_data;
 		static IdType g_max_id;
 
-		Request(IdType id, Type type = Type::GET);
+		Request(IdType id, Type type = Type::ANY);
 		Request(const Request&) = delete;
 		Request(Request&& req);
 		Request& operator=(Request&& req);
 
-		Request(std::string&& url, Type type = Type::GET,
+		Request(std::string&& url, Type type = Type::ANY,
 			boost::json::value&& data = {});
-		Request(const std::string& url, Type type = Type::GET,
+		Request(const std::string& url, Type type = Type::ANY,
 			const boost::json::value& data = {});
 		// установка нового id 
 		static IdType getNextId()
