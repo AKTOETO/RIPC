@@ -58,12 +58,7 @@ void IPC::Server::handleJson(std::shared_ptr<Session> session,
 {
 	std::cout << "[Server]: Получено сообщение от клиента: " << json << std::endl;
 
-	// TODO надо добавить преобращование в Request и
-	// поиск нужного обработчика, затем создание Response
-	// (передача в него id из Request)
-	// Передача Response и Request в найденный обработчик
-	// отправка Response обратно клиенту
-
+	// запуск обработки запроса
 	try
 	{
 		// корнвертируем json в Request
