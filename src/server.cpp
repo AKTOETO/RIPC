@@ -1,5 +1,6 @@
 #include "server.h"
 #include "request.h"
+#include "response.h"
 
 #include <unistd.h>	// unlink
 #include <iostream> // cout
@@ -57,17 +58,20 @@ void IPC::Server::handleJson(std::shared_ptr<Session> session,
 		// корнвертируем json в Request
 		auto obj = IPC::Request::fromJson(json);
 
+		// создаем объект ответа клиенту
+		Response res(obj.m_id, obj.m_data);
+
 		// TODO Переделать. Симуляция обработки запроса
 		{
 			// получаем словарь из data
-			auto &json_data = obj.m_data.as_object();
+			auto &json_data = res.m_data.as_object();
 
 			// добавляем в него строку 
 			json_data["server"] = "from";
 		}
 
 		// Отправка ответа клиенту
-		session->send(IPC::Request::toJson(obj));
+		session->send(IPC::Response::toJson(res));
 	}
 	catch(const std::exception& e)
 	{

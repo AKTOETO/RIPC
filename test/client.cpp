@@ -12,7 +12,7 @@ void read_input(std::shared_ptr<IPC::Client> client) {
 			obj["msg"] = message;
 			//client->sendMessage(message);
 			client->call(IPC::Request("/privet/", IPC::Request::Type::POST, std::move(obj)),
-				[](IPC::Request&& req) {
+				[](IPC::Response&& req) {
 					std::cout << "Ответ пришел: " << req.m_data << std::endl;
 				}
 			);
