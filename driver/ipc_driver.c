@@ -196,11 +196,11 @@ static void server_destroy(struct server_t *srv)
     // проверка входного параметра
     if (!srv)
     {
-        pr_warn("server_destroy: Attempt to destroy NULL server");
+        ERR("server_destroy: Attempt to destroy NULL server");
         return;
     }
 
-    pr_info("server_destroy: Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
+    INF(" Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
 
     struct client_t *cli, *tmp;
 
@@ -353,21 +353,8 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         }
 
         // создаем сервер
-        server = kmalloc(sizeof(*server), GFP_KERNEL);
-        if (!server)
-        {
-            ERR("REGISTER_SERVER: cant allocate memory for server");
-            return -ENOMEM;
-        }
+        server = server_create(reg.name);
 
-        // генерация id
-        server->m_id = generate_id();
-        // проверка: получилось ли создать id
-        if (server->m_id < 0)
-        {
-            ERR("REGISTER_SERVER: Failed to allocate server ID: %s", server->m_name);
-            return -ENOMEM;
-        }
         reg.server_id = server->m_id;
 
         // отправляем id обратно в userspace
@@ -377,16 +364,23 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             return -EFAULT;
         }
 
-        strncpy(server->m_name, reg.name, MAX_SERVER_NAME);
-        server->m_task = current;
-        INIT_LIST_HEAD(&server->m_clients);
-
-        // регистрация сервера в общем спсике
-        mutex_lock(&g_lock);
-        list_add(&server->list, &g_server_list);
-        mutex_unlock(&g_lock);
-
         INF("REGISTER_SERVER: New server is registered: %d:%s", server->m_id, server->m_name);
+        break;
+
+        // регистрация нового клиента
+    case IOCTL_REGISTER_CLIENT:
+
+        // создали новго клиента
+        client = client_create();
+
+        // отправляем id обратно в userspace
+        if (copy_to_user((void __user *)arg, &client->m_id, sizeof(client->m_id)))
+        {
+            ERR("REGISTER_CLIENT: cant sand back clients's id: %d", client->m_id);
+            return -EFAULT;
+        }
+
+        INF("REGISTER_CLIENT: New client is registered: %d", client->m_id);
         break;
 
     default:
@@ -485,8 +479,6 @@ static void __exit ipc_exit(void)
     struct client_t *client, *client_tmp;
     struct shm_t *shm, *shm_tmp;
 
-    mutex_lock(&g_lock);
-
     // Очистка списка клиентов
     list_for_each_entry_safe(client, client_tmp, &g_client_list, list)
         client_destroy(client);
@@ -501,8 +493,6 @@ static void __exit ipc_exit(void)
 
     // удаление счетчика
     ida_destroy(&g_ida);
-
-    mutex_unlock(&g_lock);
 
     // удаление структур драйвера
     cdev_del(&g_cdev);
