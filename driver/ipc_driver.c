@@ -30,9 +30,9 @@ static struct class *g_dev_class; // Класс устройства
 static struct cdev g_cdev;        // Структура символьного устройства
 
 /*
- *  Список серверов
+ *  Сервер
  */
-struct server
+struct server_t
 {
     char m_name[MAX_SERVER_NAME]; // имя сервера
     int m_id;                     // id сервера в процессе
@@ -44,19 +44,19 @@ struct server
 /*
  * Клиент
  */
-struct client
+struct client_t
 {
-    int m_id;                    // id клиента в процессе
-    struct server *m_server_ptr; // указатель на сервер, к которому подключен
-    struct task_struct *m_task;  // указатель на задачу, где зарегистрирован сервер
-    struct shm *m_shm_ptr;       // указатель на общую память
-    struct list_head list;       // список клиентов
+    int m_id;                      // id клиента в процессе
+    struct server_t *m_server_ptr; // указатель на сервер, к которому подключен
+    struct task_struct *m_task;    // указатель на задачу, где зарегистрирован сервер
+    struct shm_t *m_shm_ptr;       // указатель на общую память
+    struct list_head list;         // список клиентов
 };
 
 /*
  * Общая память
  */
-struct shm
+struct shm_t
 {
     void *m_ptr;           // указатеь на область общей памяти
     size_t m_size;         // размер общей памяти
@@ -74,9 +74,9 @@ static DEFINE_MUTEX(g_lock); // глобальная блокировка
  */
 
 // поиск сервера по имени
-static struct server *find_server_by_name(const char *name)
+static struct server_t *find_server_by_name(const char *name)
 {
-    struct server *srv;
+    struct server_t *srv;
     list_for_each_entry(srv, &g_server_list, list)
     {
         if (strcmp(srv->m_name, name) == 0)
@@ -94,9 +94,9 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int err = 0, ret = 0;
     char name[MAX_SERVER_NAME];
-    struct server *server = NULL;
-    struct client *client = NULL;
-    struct shm *shm = NULL;
+    struct server_t *server = NULL;
+    struct client_t *client = NULL;
+    struct shm_t *shm = NULL;
 
     // првоерка типа и номеров битовых полей, чтобы не декодировать неверные команды
     if (_IOC_TYPE(cmd) != IOCTL_MAGIC)
@@ -145,7 +145,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         list_add(&server->list, &g_server_list);
         mutex_unlock(&g_lock);
 
-        INF("REGISTER_SERVER: New server is registered: %s", server->m_name);
+        INF("REGISTER_SERVER: New server is registered: %d:%s", server->m_id, server->m_name);
         break;
 
     default:
@@ -175,7 +175,7 @@ static char *devnode(const struct device *dev, umode_t *mode)
     // Установка прав доступа 0666
     if (mode)
         *mode = 0666;
-        
+
     return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
 }
 
@@ -242,7 +242,36 @@ class_fail:
 
 static void __exit ipc_exit(void)
 {
-    // TODO: очистка структур сервера, памяти, клиентов
+    struct server_t *server, *server_tmp;
+    struct client_t *client, *client_tmp;
+    struct shm_t *shm, *shm_tmp;
+
+    mutex_lock(&g_lock);
+
+    // Очистка списка клиентов
+    list_for_each_entry_safe(client, client_tmp, &g_client_list, list)
+    {
+        list_del(&client->list);
+        kfree(client);
+    }
+
+    // Очистка списка серверов
+    list_for_each_entry_safe(server, server_tmp, &g_server_list, list)
+    {
+        list_del(&server->m_clients);
+        list_del(&server->list);
+        kfree(server);
+    }
+
+    // Очистка списка памятей
+    list_for_each_entry_safe(shm, shm_tmp, &g_server_list, list)
+    {
+        kfree(shm->m_ptr);
+        list_del(&shm->list);
+        kfree(shm);
+    }
+
+    mutex_unlock(&g_lock);
 
     // удаление структур драйвера
     cdev_del(&g_cdev);
