@@ -13,23 +13,28 @@ int main(int argc, char **argv)
         perror("open");
         return 1;
     }
-    char server_name[MAX_SERVER_NAME] = "my_server";
+    
+    // структура запроса регистрации сервера
+    struct server_registration reg = {
+        .name = "my server",
+        .server_id = -1
+    };
 
     // выбор названия
     if(argc >= 2)
     {
-        strncpy(server_name, argv[1], MAX_SERVER_NAME - 1);
-        server_name[MAX_SERVER_NAME - 1] = '\0';
+        strncpy(reg.name, argv[1], MAX_SERVER_NAME - 1);
+        reg.name[MAX_SERVER_NAME - 1] = '\0';
     }
 
-    if (ioctl(fd, IOCTL_REGISTER_SERVER, server_name) < 0)
+    if (ioctl(fd, IOCTL_REGISTER_SERVER, reg.name) < 0)
     {
         perror("ioctl REGISTER_SERVER");
         close(fd);
         return 1;
     }
 
-    printf("Server '%s' registered successfully\n", server_name);
+    printf("Server '%d:%s' registered successfully\n", reg.server_id, reg.name);
     close(fd);
     return 0;
 }

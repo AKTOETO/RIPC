@@ -9,15 +9,23 @@
 #define MAX_SERVER_NAME 64        // Максимальная длина имени сервера
 #define SHARED_MEM_SIZE PAGE_SIZE // Размер общей памяти (1 страница)
 
+/**
+ * IOCTL data for commands
+ */
+
+// IOCTL REGISTER_SERVER
+struct server_registration
+{
+    char name[MAX_SERVER_NAME];
+    int server_id;
+};
+
 /*
  *  IOCTL commands
  */
 #define IOCTL_MAGIC '/'
-#define IOCTL_REGISTER_SERVER _IOW(IOCTL_MAGIC, 1, char *) // регистрация сервера в системе
-
-
+#define IOCTL_REGISTER_SERVER _IOW(IOCTL_MAGIC, 1, struct server_registration) // регистрация сервера в системе
 
 #define IOCTL_MAX_NUM 1 // максимальное количество команд
-
 
 #endif // RIPC_H

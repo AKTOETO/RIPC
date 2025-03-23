@@ -100,18 +100,18 @@ static struct server_t *find_server_by_name(const char *name)
     return NULL;
 }
 
-//
-
 /**
  * Обработчик ioctl()
  */
 static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int err = 0, ret = 0;
-    char name[MAX_SERVER_NAME];
     struct server_t *server = NULL;
     struct client_t *client = NULL;
     struct shm_t *shm = NULL;
+
+    // registration server
+    struct server_registration reg;
 
     // првоерка типа и номеров битовых полей, чтобы не декодировать неверные команды
     if (_IOC_TYPE(cmd) != IOCTL_MAGIC)
@@ -125,16 +125,14 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // регистрация нового сервера
     case IOCTL_REGISTER_SERVER:
         // копируем имя из userspace
-        if (copy_from_user(name, (char __user *)arg, MAX_SERVER_NAME))
+        if (copy_from_user(&reg, (char __user *)arg, sizeof(reg)))
         {
             ERR("REGISTER_SERVER: copy_from_user failed\n");
             return -EFAULT;
         }
 
-        // блокируем все
-
         // ищем сервер по имени
-        server = find_server_by_name(name);
+        server = find_server_by_name(reg.name);
         if (server)
         {
             ERR("REGISTER_SERVER: server already exists: %d:%s", server->m_id, server->m_name);
@@ -157,8 +155,16 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             ERR("REGISTER_SERVER: Failed to allocate server ID: %s", server->m_name);
             return -ENOMEM;
         }
+        reg.server_id = server->m_id;
 
-        strncpy(server->m_name, name, MAX_SERVER_NAME);
+        // отправляем id обратно в userspace
+        if (copy_to_user((void __user *)arg, &reg, sizeof(reg)))
+        {
+            ERR("REGISTER_SERVER: cant sand back server's id: %d:%s", server->m_id, server->m_name);
+            return -EFAULT;
+        }        
+        
+        strncpy(server->m_name, reg.name, MAX_SERVER_NAME);
         server->m_task = current;
         INIT_LIST_HEAD(&server->m_clients);
 
@@ -268,9 +274,6 @@ static void __exit ipc_exit(void)
 
     mutex_lock(&g_lock);
 
-    // удаление счетчика
-    ida_destroy(&g_ida);
-
     // Очистка списка клиентов
     list_for_each_entry_safe(client, client_tmp, &g_client_list, list)
     {
@@ -281,9 +284,20 @@ static void __exit ipc_exit(void)
     // Очистка списка серверов
     list_for_each_entry_safe(server, server_tmp, &g_server_list, list)
     {
-        if(server->m_id > 0) free_id(server->m_id);
-        list_del(&server->m_clients);
+        // удаление id
+        if (server->m_id > 0)
+            free_id(server->m_id);
+        
+        // удаление клиентов из списка
+        list_for_each_entry_safe(client, client_tmp, &server->m_clients, list)
+        {
+            list_del(&client->list);
+        }
+
+        // удаление сервера из глобального списка
         list_del(&server->list);
+
+        // очистка памяти
         kfree(server);
     }
 
@@ -294,6 +308,9 @@ static void __exit ipc_exit(void)
         list_del(&shm->list);
         kfree(shm);
     }
+
+    // удаление счетчика
+    ida_destroy(&g_ida);
 
     mutex_unlock(&g_lock);
 
