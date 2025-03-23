@@ -68,6 +68,19 @@ struct shm_t
 static LIST_HEAD(g_server_list);
 static LIST_HEAD(g_client_list);
 static DEFINE_MUTEX(g_lock); // глобальная блокировка
+static DEFINE_IDA(g_ida);    // Глобальный генератор id. TODO: нужно сделать свой под каждый процесс
+
+// генерация id
+static int generate_id(void)
+{
+    return ida_alloc(&g_ida, GFP_KERNEL);
+}
+
+// удаление id
+static void free_id(int id)
+{
+    ida_free(&g_ida, id);
+}
 
 /**
  * Серверные операции
@@ -86,6 +99,8 @@ static struct server_t *find_server_by_name(const char *name)
     }
     return NULL;
 }
+
+//
 
 /**
  * Обработчик ioctl()
@@ -117,13 +132,12 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         }
 
         // блокируем все
-        mutex_lock(&g_lock);
 
         // ищем сервер по имени
-        if (find_server_by_name(name))
+        server = find_server_by_name(name);
+        if (server)
         {
-            INF("REGISTER_SERVER: server already exists: %s", name);
-            mutex_unlock(&g_lock);
+            ERR("REGISTER_SERVER: server already exists: %d:%s", server->m_id, server->m_name);
             return -EEXIST;
         }
 
@@ -131,17 +145,25 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         server = kmalloc(sizeof(*server), GFP_KERNEL);
         if (!server)
         {
-            INF("REGISTER_SERVER: cant allocate memory for server");
-            mutex_unlock(&g_lock);
+            ERR("REGISTER_SERVER: cant allocate memory for server");
             return -ENOMEM;
         }
 
-        // настраиваем
+        // генерация id
+        server->m_id = generate_id();
+        // проверка: получилось ли создать id
+        if (server->m_id < 0)
+        {
+            ERR("REGISTER_SERVER: Failed to allocate server ID: %s", server->m_name);
+            return -ENOMEM;
+        }
+
         strncpy(server->m_name, name, MAX_SERVER_NAME);
         server->m_task = current;
-        // TODO: generate id
-        server->m_id = 0;
         INIT_LIST_HEAD(&server->m_clients);
+
+        // регистрация сервера в общем спсике
+        mutex_lock(&g_lock);
         list_add(&server->list, &g_server_list);
         mutex_unlock(&g_lock);
 
@@ -220,8 +242,6 @@ static int __init ipc_init(void)
         goto cdev_fail;
     }
 
-    // TODO: создание структур серверов, клиентов, общей памяти
-
     INF("driver loaded");
     return 0;
 
@@ -248,6 +268,9 @@ static void __exit ipc_exit(void)
 
     mutex_lock(&g_lock);
 
+    // удаление счетчика
+    ida_destroy(&g_ida);
+
     // Очистка списка клиентов
     list_for_each_entry_safe(client, client_tmp, &g_client_list, list)
     {
@@ -258,6 +281,7 @@ static void __exit ipc_exit(void)
     // Очистка списка серверов
     list_for_each_entry_safe(server, server_tmp, &g_server_list, list)
     {
+        if(server->m_id > 0) free_id(server->m_id);
         list_del(&server->m_clients);
         list_del(&server->list);
         kfree(server);
