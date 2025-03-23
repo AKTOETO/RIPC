@@ -1,55 +1,42 @@
-# Определение расположения исходников драйвера
-DRIVER_DIR := driver
+# Корневой Makefile
+DRIVER_DIR = driver
+SERVER_DIR = server
+CLIENT_DIR = client
 
-# Папка для сборки
-BUILD_DIR := build
-
-# Если KERNELRELEASE определен - сборка внутри ядра
-ifneq ($(KERNELRELEASE),)
-    obj-m += ipc_driver.o
-# Иначе - сборка из командной строки
-else
-    KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-    PWD := $(shell pwd)
-endif
+# Компиляторы
+KERNEL_CC = gcc-12  # Компилятор для драйвера
+APP_CC = gcc        # Компилятор для приложений
 
 
 default: help
 
-b:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) modules
+a: d s c
 
-# Цель для установки модуля
-i:
-	sudo insmod $(DRIVER_DIR)/ipc_driver.ko
-	@echo "Driver loaded. Check dmesg for logs."
+d:
+	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) b
 
-# Цель для удаления модуля
-r:
-	sudo rmmod ipc_driver
-	@echo "Driver unloaded."
+di: 
+	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) i
 
-# Цель для очистки
+dr:
+	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) r
+
+s:
+	$(MAKE) -C $(SERVER_DIR) CC=$(APP_CC) b
+
 c:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) clean
-	rm -f $(DRIVER_DIR)/*.ko
-	rm -f $(DRIVER_DIR)/*.mod.c
-	rm -rf $(DRIVER_DIR)/.tmp_versions
-	rm -f $(DRIVER_DIR)/Module.symvers
-	rm -f $(DRIVER_DIR)/modules.order
+	$(MAKE) -C $(CLIENT_DIR) CC=$(APP_CC) b
 
-# Дополнительные цели для удобства
-rb: c b
-
-# отображение логов
-logs:
-	sudo dmesg -w | grep 'RIPC:'
+cl:
+	$(MAKE) -C $(DRIVER_DIR) CC=$(APP_CC) c
+	$(MAKE) -C $(SERVER_DIR) CC=$(APP_CC) c
+	$(MAKE) -C $(CLIENT_DIR) CC=$(APP_CC) c
 
 help:
 	@echo "Available targets:"
-	@echo "  b    - Build the kernel module"
-	@echo "  i    - Insert the module (sudo required)"
-	@echo "  r    - Remove the module (sudo required)"
-	@echo "  c    - Clean build artifacts"
-	@echo "  rb   - Clean and rebuild"
-	@echo "  logs - Show driver's logs (sudo required)"
+	@echo "  d  - Driver's makefile"
+	@echo "  s  - Server's makefile"
+	@echo "  c  - Client's makefile"
+	@echo "  cl - Clean all targets"
+	@echo "  di - Install driver"
+	@echo "  dr - Remove driver"

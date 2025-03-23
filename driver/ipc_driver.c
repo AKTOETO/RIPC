@@ -169,6 +169,16 @@ static struct file_operations g_fops = {
     .mmap = ipc_mmap,
 };
 
+// обработчик прав
+static char *devnode(const struct device *dev, umode_t *mode)
+{
+    // Установка прав доступа 0666
+    if (mode)
+        *mode = 0666;
+        
+    return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
+}
+
 static int __init ipc_init(void)
 {
     int result;
@@ -190,8 +200,10 @@ static int __init ipc_init(void)
         ERR("Failed to create class: %d", result);
         goto class_fail;
     }
+    // присваиваем обработчик прав
+    g_dev_class->devnode = &devnode;
 
-    // Создание устройства /dev/ripc_ipc
+    // Создание устройства /dev/ripc_ipc c правами (rw-rw-rw-)
     if (!device_create(g_dev_class, NULL, g_dev_num, NULL, DEVICE_NAME))
     {
         ERR("Failed to create device");
