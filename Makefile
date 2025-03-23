@@ -1,82 +1,55 @@
-# Компилятор для пользовательских программ
-CC = gcc-12
+# Определение расположения исходников драйвера
+DRIVER_DIR := driver
 
-# Флаги компиляции для пользовательских программ
-CFLAGS = -Wall -Wextra -I./lib
+# Папка для сборки
+BUILD_DIR := build
 
-# Директории
-SRC_DIR = src
-BUILD_DIR = build
-BIN_DIR = $(BUILD_DIR)/bin
-OBJ_DIR = $(BUILD_DIR)/obj
+# Если KERNELRELEASE определен - сборка внутри ядра
+ifneq ($(KERNELRELEASE),)
+    obj-m += ipc_driver.o
+# Иначе - сборка из командной строки
+else
+    KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+    PWD := $(shell pwd)
+endif
 
-# Исходные файлы
-SRC_CLIENT = $(SRC_DIR)/ipc_client.c
-SRC_SERVER = $(SRC_DIR)/ipc_server.c
-SRC_DRIVER = $(SRC_DIR)/ipc_driver.c
+default:
+	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) modules
 
-# Объектные файлы
-OBJ_CLIENT = $(OBJ_DIR)/ipc_client.o
-OBJ_SERVER = $(OBJ_DIR)/ipc_server.o
+# Цель для установки модуля
+i:
+	sudo insmod $(DRIVER_DIR)/ipc_driver.ko
+	@echo "Driver loaded. Check dmesg for logs."
 
-# Исполняемые файлы
-CLIENT = $(BIN_DIR)/ipc_client
-SERVER = $(BIN_DIR)/ipc_server
-DRIVER_MODULE = $(BIN_DIR)/ipc_driver.ko
+# Цель для удаления модуля
+r:
+	sudo rmmod ipc_driver
+	@echo "Driver unloaded."
 
-# Путь к заголовочным файлам ядра
-KERNEL_HEADERS = /lib/modules/$(shell uname -r)/build
-
-# Проверка наличия заголовочных файлов ядра
-check_kernel_headers:
-	@if [ ! -d "$(KERNEL_HEADERS)" ]; then \
-		echo "Kernel headers not found. Please install them with: sudo apt install linux-headers-$(uname -r)"; \
-		exit 1; \
-	fi
-
-# Цели по умолчанию
-all: $(CLIENT) $(SERVER) $(DRIVER_MODULE)
-
-# Создание необходимых директорий
-$(OBJ_DIR):
-	@mkdir -p $(OBJ_DIR)
-
-$(BIN_DIR):
-	@mkdir -p $(BIN_DIR)
-
-# Компиляция клиента
-$(CLIENT): $(OBJ_CLIENT) | $(BIN_DIR)
-	$(CC) $(CFLAGS) -o $@ $<
-
-$(OBJ_CLIENT): $(SRC_CLIENT) | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-# Компиляция сервера
-$(SERVER): $(OBJ_SERVER) | $(BIN_DIR)
-	$(CC) $(CFLAGS) -o $@ $<
-
-$(OBJ_SERVER): $(SRC_SERVER) | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-# Компиляция драйвера (модуля ядра)
-$(DRIVER_MODULE): check_kernel_headers $(SRC_DRIVER) | $(BIN_DIR)
-	$(MAKE) -C $(KERNEL_HEADERS) M=$(PWD)/$(SRC_DIR) CC=gcc-12 modules
-	@cp $(SRC_DIR)/ipc_driver.ko $(BIN_DIR)/
-
-# Очистка
+# Цель для очистки
 clean:
-	rm -rf $(BUILD_DIR)
-	$(MAKE) -C $(KERNEL_HEADERS) M=$(PWD)/$(SRC_DIR) clean
+	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) clean
+	rm -f $(DRIVER_DIR)/*.ko
+	rm -f $(DRIVER_DIR)/*.mod.c
+	rm -rf $(DRIVER_DIR)/.tmp_versions
+	rm -f $(DRIVER_DIR)/Module.symvers
+	rm -f $(DRIVER_DIR)/modules.order
 
-# Пересборка
-rebuild: clean all
+# Дополнительные цели для удобства
+rebuild: clean default
 
-# Загрузка драйвера
-load_driver: $(DRIVER_MODULE)
-	@if [ "$(shell id -u)" -ne 0 ]; then \
-		echo "You must be root to load the driver. Use sudo."; \
-		exit 1; \
-	fi
-	sudo insmod $(DRIVER_MODULE)
+# Перезагрузка модуля
+reload: r rebuild i
 
-.PHONY: all clean rebuild check_kernel_headers load_driver
+# отображение логов
+logs:
+	sudo dmesg -w | grep 'RIPC:'
+
+help:
+	@echo "Available targets:"
+	@echo "  default - Build the kernel module"
+	@echo "  i       - Insert the module (sudo required)"
+	@echo "  r       - Remove the module (sudo required)"
+	@echo "  clean   - Clean build artifacts"
+	@echo "  rebuild - Clean and rebuild"
+	@echo "  logs    - Show driver's logs (sudo required)"
