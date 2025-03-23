@@ -9,21 +9,17 @@
 #include <linux/signal.h>
 #include <linux/mutex.h>
 #include <linux/errno.h>
-#include <linux/io.h>     // Добавлено для virt_to_phys
-#include <linux/cdev.h>   // Символьные устройства cdev
-#include <linux/printk.h> // Для printk
-#include <asm/ioctl.h>    // Для доп проверок в ioctl
+#include <linux/io.h>        // Добавлено для virt_to_phys
+#include <linux/cdev.h>      // Символьные устройства cdev
+#include <linux/printk.h>    // Для printk
+#include <asm/ioctl.h>       // Для доп проверок в ioctl
+#include "../include/ripc.h" // константы для драйвера
 
 // Устанавливаем префикс для journalctl -t RIPC
 #undef pr_fmt
 #define pr_fmt(fmt) "RIPC: %s:%d: " fmt, __FILE__, __LINE__
 #define INF(fmt, ...) pr_info(fmt "\n", ##__VA_ARGS__)
 #define ERR(fmt, ...) pr_err(fmt "\n", ##__VA_ARGS__)
-
-#define CLASS_NAME "ripc"         // имя класса устройств
-#define DEVICE_NAME "ripc"        // Имя устройства в /dev
-#define MAX_SERVER_NAME 64        // Максимальная длина имени сервера
-#define SHARED_MEM_SIZE PAGE_SIZE // Размер общей памяти (1 страница)
 
 // Переменные для регистрации устройства
 static int g_major = 0;           // номер устройства (major)
@@ -32,13 +28,6 @@ static int g_dev_count = 1;       // количество устройств
 static dev_t g_dev_num;           // Номер устройства (major+minor)
 static struct class *g_dev_class; // Класс устройства
 static struct cdev g_cdev;        // Структура символьного устройства
-
-/*
- *  IOCTL commands
- */
-#define IOCTL_MAGIC '/'
-#define IOCTL_REGISTER_SERVER _IOW(IOCTL_MAGIC, 1, char *) // регистрация сервера в системе
-#define IOCTL_MAX_NUM 1
 
 /*
  *  Список серверов
@@ -80,14 +69,34 @@ static LIST_HEAD(g_server_list);
 static LIST_HEAD(g_client_list);
 static DEFINE_MUTEX(g_lock); // глобальная блокировка
 
-// Обработчик ioctl()
+/**
+ * Серверные операции
+ */
+
+// поиск сервера по имени
+static struct server *find_server_by_name(const char *name)
+{
+    struct server *srv;
+    list_for_each_entry(srv, &g_server_list, list)
+    {
+        if (strcmp(srv->m_name, name) == 0)
+        {
+            return srv;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Обработчик ioctl()
+ */
 static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    int t_err = 0, t_ret = 0;
-    char t_name[MAX_SERVER_NAME];
-    struct server_info *t_server;
-    struct client_info *t_client;
-    struct shared_memory *t_shm;
+    int err = 0, ret = 0;
+    char name[MAX_SERVER_NAME];
+    struct server *server = NULL;
+    struct client *client = NULL;
+    struct shm *shm = NULL;
 
     // првоерка типа и номеров битовых полей, чтобы не декодировать неверные команды
     if (_IOC_TYPE(cmd) != IOCTL_MAGIC)
@@ -101,20 +110,49 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // регистрация нового сервера
     case IOCTL_REGISTER_SERVER:
         // копируем имя из userspace
-        if(copy_from_user(t_name, (char __user *)arg, MAX_SERVER_NAME))
+        if (copy_from_user(name, (char __user *)arg, MAX_SERVER_NAME))
         {
             ERR("REGISTER_SERVER: copy_from_user failed\n");
             return -EFAULT;
         }
 
+        // блокируем все
+        mutex_lock(&g_lock);
+
+        // ищем сервер по имени
+        if (find_server_by_name(name))
+        {
+            INF("REGISTER_SERVER: server already exists: %s", name);
+            mutex_unlock(&g_lock);
+            return -EEXIST;
+        }
+
+        // создаем сервер
+        server = kmalloc(sizeof(*server), GFP_KERNEL);
+        if (!server)
+        {
+            INF("REGISTER_SERVER: cant allocate memory for server");
+            mutex_unlock(&g_lock);
+            return -ENOMEM;
+        }
+
+        // настраиваем
+        strncpy(server->m_name, name, MAX_SERVER_NAME);
+        server->m_task = current;
+        // TODO: generate id
+        server->m_id = 0;
+        INIT_LIST_HEAD(&server->m_clients);
+        list_add(&server->list, &g_server_list);
+        mutex_unlock(&g_lock);
+
+        INF("REGISTER_SERVER: New server is registered: %s", server->m_name);
         break;
 
     default:
-        INF("Unknown ioctl command: %d", cmd);
-        break;
+        INF("Unknown ioctl command: 0x%x", cmd);
+        return -ENOTTY;
     }
-
-    return (long)0;
+    return 0;
 }
 
 static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
