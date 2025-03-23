@@ -13,7 +13,10 @@ else
     PWD := $(shell pwd)
 endif
 
-default:
+
+default: help
+
+b:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) modules
 
 # Цель для установки модуля
@@ -27,7 +30,7 @@ r:
 	@echo "Driver unloaded."
 
 # Цель для очистки
-clean:
+c:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD)/$(DRIVER_DIR) clean
 	rm -f $(DRIVER_DIR)/*.ko
 	rm -f $(DRIVER_DIR)/*.mod.c
@@ -36,10 +39,7 @@ clean:
 	rm -f $(DRIVER_DIR)/modules.order
 
 # Дополнительные цели для удобства
-rebuild: clean default
-
-# Перезагрузка модуля
-reload: r rebuild i
+rb: c b
 
 # отображение логов
 logs:
@@ -47,9 +47,9 @@ logs:
 
 help:
 	@echo "Available targets:"
-	@echo "  default - Build the kernel module"
-	@echo "  i       - Insert the module (sudo required)"
-	@echo "  r       - Remove the module (sudo required)"
-	@echo "  clean   - Clean build artifacts"
-	@echo "  rebuild - Clean and rebuild"
-	@echo "  logs    - Show driver's logs (sudo required)"
+	@echo "  b    - Build the kernel module"
+	@echo "  i    - Insert the module (sudo required)"
+	@echo "  r    - Remove the module (sudo required)"
+	@echo "  c    - Clean build artifacts"
+	@echo "  rb   - Clean and rebuild"
+	@echo "  logs - Show driver's logs (sudo required)"
