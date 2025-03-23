@@ -8,6 +8,7 @@
 #define CLASS_NAME "ripc"         // имя класса устройств
 #define MAX_SERVER_NAME 64        // Максимальная длина имени сервера
 #define SHARED_MEM_SIZE PAGE_SIZE // Размер общей памяти (1 страница)
+#define MAX_SHARED_MEM_SIZE SHARED_MEM_SIZE // Максимально возможный размер общей памяти
 
 /**
  * IOCTL data for commands

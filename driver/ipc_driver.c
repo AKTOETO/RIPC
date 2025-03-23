@@ -9,6 +9,7 @@
 #include <linux/signal.h>
 #include <linux/mutex.h>
 #include <linux/errno.h>
+#include <linux/atomic.h>    // атомарные операции
 #include <linux/io.h>        // Добавлено для virt_to_phys
 #include <linux/cdev.h>      // Символьные устройства cdev
 #include <linux/printk.h>    // Для printk
@@ -60,26 +61,81 @@ struct shm_t
 {
     void *m_ptr;           // указатеь на область общей памяти
     size_t m_size;         // размер общей памяти
-    int m_is_writing;      // флаг: пишет ли кто-то в памят или нет
+    atomic_t m_is_writing; // флаг: пишет ли кто-то в памят или нет
     struct list_head list; // список областей памяти
 };
 
 // регистрируем списки
 static LIST_HEAD(g_server_list);
 static LIST_HEAD(g_client_list);
+static LIST_HEAD(g_shm_list);
 static DEFINE_MUTEX(g_lock); // глобальная блокировка
 static DEFINE_IDA(g_ida);    // Глобальный генератор id. TODO: нужно сделать свой под каждый процесс
 
 // генерация id
 static int generate_id(void)
 {
-    return ida_alloc(&g_ida, GFP_KERNEL);
+    int id = ida_alloc(&g_ida, GFP_KERNEL);
+    if (id < 0)
+    {
+        ERR("generate_id: Cannot allocate id");
+    }
+    return id;
 }
 
 // удаление id
 static void free_id(int id)
 {
     ida_free(&g_ida, id);
+}
+
+/**
+ * Клиентские операции
+ */
+// создание клиента
+static struct client_t *client_create(void)
+{
+    struct client_t *cli = kmalloc(sizeof(*cli), GFP_KERNEL);
+    if (!cli)
+    {
+        ERR("client_create: Cant allocate memory for client");
+        return NULL;
+    }
+
+    // Инициализация полей
+    cli->m_id = generate_id();
+    cli->m_server_ptr = NULL;
+    cli->m_task = current;
+    cli->m_shm_ptr = NULL;
+
+    mutex_lock(&g_lock);
+    list_add_tail(&cli->list, &g_client_list);
+    mutex_unlock(&g_lock);
+
+    INF("Client %d created", cli->m_id);
+
+    return cli;
+}
+
+// удаление клиента
+static void client_destroy(struct client_t *cli)
+{
+    // проверка входных данных
+    if (!cli)
+    {
+        ERR("client_destroy: Attempt to destroy NULL client");
+        return;
+    }
+
+    INF("Destroying client %d\n", cli->m_id);
+
+    // удаление из глобального списка
+    mutex_lock(&g_lock);
+    list_del(&cli->list);
+    mutex_unlock(&g_lock);
+
+    free_id(cli->m_id);
+    kfree(cli);
 }
 
 /**
@@ -98,6 +154,163 @@ static struct server_t *find_server_by_name(const char *name)
         }
     }
     return NULL;
+}
+
+// создание сервера
+static struct server_t *server_create(const char *name)
+{
+    // проверка входных данные
+    if (!name || strlen(name) == 0)
+    {
+        ERR("server_create: Invalid server name");
+        return NULL;
+    }
+
+    // выделние и проверка памяти
+    struct server_t *srv = kmalloc(sizeof(*srv), GFP_KERNEL);
+    if (!srv)
+    {
+        ERR("server_create: Cant allocate memory for server");
+        return NULL;
+    }
+
+    // Инициализация полей
+    strscpy(srv->m_name, name, MAX_SERVER_NAME);
+    srv->m_id = generate_id();
+    INIT_LIST_HEAD(&srv->m_clients);
+    srv->m_task = current;
+
+    // добавление в главный список
+    mutex_lock(&g_lock);
+    list_add_tail(&srv->list, &g_server_list);
+    mutex_unlock(&g_lock);
+
+    INF("Server '%s' (ID: %d) created", srv->m_name, srv->m_id);
+
+    return srv;
+}
+
+// удаление сервера
+static void server_destroy(struct server_t *srv)
+{
+    // проверка входного параметра
+    if (!srv)
+    {
+        pr_warn("server_destroy: Attempt to destroy NULL server");
+        return;
+    }
+
+    pr_info("server_destroy: Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
+
+    struct client_t *cli, *tmp;
+
+    mutex_lock(&g_lock);
+
+    // Удаление списка клиентов
+    list_for_each_entry_safe(cli, tmp, &srv->m_clients, list)
+    {
+        list_del(&cli->list);
+    }
+
+    // удаление сервера из глобального списка
+    list_del(&srv->list);
+    mutex_unlock(&g_lock);
+
+    free_id(srv->m_id);
+    kfree(srv);
+}
+
+/**
+ * Операции с общей памятью
+ */
+
+// создание общей памяти
+static struct shm_t *shm_create(size_t size)
+{
+    // проверка входных параметров
+    if (size == 0 || size > MAX_SHARED_MEM_SIZE)
+    {
+        ERR("shm_create: Invalid shared memory size: %ld", size);
+        return NULL;
+    }
+
+    // выделяем память под структуру
+    struct shm_t *shm = kmalloc(sizeof(*shm), GFP_KERNEL);
+    if (!shm)
+    {
+        ERR("shm_create: Cant allocate shared memory struct");
+        return NULL;
+    }
+
+    // выделякм память под саму область
+    shm->m_ptr = kmalloc(size, GFP_KERNEL);
+    if (!shm->m_ptr)
+    {
+        ERR("shm_create: Cant allocate shared memory area");
+        kfree(shm);
+        return NULL;
+    }
+
+    // инициализация полей
+    shm->m_size = size;
+    atomic_set(&shm->m_is_writing, 0);
+    INIT_LIST_HEAD(&shm->list);
+
+    INF("Shared memory allocated (%zu bytes)", shm->m_size);
+
+    return shm;
+}
+
+// удаление общей памяти
+static void shm_destroy(struct shm_t *shm)
+{
+    // проверка входных параметров
+    if (!shm)
+    {
+        ERR("shm_destroy: Attempt to destroy NULL shared memory");
+        return;
+    }
+
+    INF("Destroying shared memory (%zu bytes)", shm->m_size);
+
+    // освобождение память под общую область
+    if (shm->m_ptr)
+        kfree(shm->m_ptr);
+
+    // освобождение памяти под структуру
+    kfree(shm);
+}
+
+// начать запись в память
+static int shm_start_write(struct shm_t *shm)
+{
+    // проверка входных данных
+    if (!shm)
+    {
+        ERR("shm_start_write: Attempt to write to NULL shared memory");
+        return -1;
+    }
+
+    // Пытаемся изменить 0 → 1 атомарно
+    if (atomic_cmpxchg(&shm->m_is_writing, 0, 1) == 0)
+    {
+        return 0; // Успешно захватили флаг
+    }
+    return -EBUSY; // Кто-то уже пишет
+}
+
+// закончить запись в память
+static void shm_end_write(struct shm_t *shm)
+{
+    // проверка входных данных
+    if (!shm)
+    {
+        ERR("shm_end_write: Attempt to end writing to NULL shared memory");
+        return;
+    }
+
+    // Гарантированно сбрасываем флаг
+    atomic_set(&shm->m_is_writing, 0);
 }
 
 /**
@@ -162,8 +375,8 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         {
             ERR("REGISTER_SERVER: cant sand back server's id: %d:%s", server->m_id, server->m_name);
             return -EFAULT;
-        }        
-        
+        }
+
         strncpy(server->m_name, reg.name, MAX_SERVER_NAME);
         server->m_task = current;
         INIT_LIST_HEAD(&server->m_clients);
@@ -276,38 +489,15 @@ static void __exit ipc_exit(void)
 
     // Очистка списка клиентов
     list_for_each_entry_safe(client, client_tmp, &g_client_list, list)
-    {
-        list_del(&client->list);
-        kfree(client);
-    }
+        client_destroy(client);
 
     // Очистка списка серверов
     list_for_each_entry_safe(server, server_tmp, &g_server_list, list)
-    {
-        // удаление id
-        if (server->m_id > 0)
-            free_id(server->m_id);
-        
-        // удаление клиентов из списка
-        list_for_each_entry_safe(client, client_tmp, &server->m_clients, list)
-        {
-            list_del(&client->list);
-        }
-
-        // удаление сервера из глобального списка
-        list_del(&server->list);
-
-        // очистка памяти
-        kfree(server);
-    }
+        server_destroy(server);
 
     // Очистка списка памятей
     list_for_each_entry_safe(shm, shm_tmp, &g_server_list, list)
-    {
-        kfree(shm->m_ptr);
-        list_del(&shm->list);
-        kfree(shm);
-    }
+        shm_destroy(shm);
 
     // удаление счетчика
     ida_destroy(&g_ida);
