@@ -30,16 +30,25 @@ static dev_t g_dev_num;           // Номер устройства (major+mino
 static struct class *g_dev_class; // Класс устройства
 static struct cdev g_cdev;        // Структура символьного устройства
 
+/**
+ * Список клиентов для сервера
+ */
+struct servers_clients_t
+{
+    struct client_t *m_client;
+    struct list_head list;
+};
+
 /*
  *  Сервер
  */
 struct server_t
 {
-    char m_name[MAX_SERVER_NAME]; // имя сервера
-    int m_id;                     // id сервера в процессе
-    struct list_head m_clients;   // список подключенных клиентов
-    struct task_struct *m_task;   // указатель на задачу, где зарегистрирован сервер
-    struct list_head list;        // список серверв
+    char m_name[MAX_SERVER_NAME];       // имя сервера
+    int m_id;                           // id сервера в процессе
+    struct list_head m_clients; // список подключенных клиентов
+    struct task_struct *m_task;         // указатель на задачу, где зарегистрирован сервер
+    struct list_head list;              // список серверв
 };
 
 /*
@@ -149,7 +158,6 @@ static struct client_t *find_client_by_id(int id)
     }
 
     // проходимся по каждому клиенту и ищем подходящего
-
     struct client_t *client = NULL;
 
     // Итерируемся по списку клиентов
@@ -158,15 +166,11 @@ static struct client_t *find_client_by_id(int id)
         if (client->m_id == id)
         {
             // Нашли совпадение - сохраняем результат
-            goto found_client_by_id;
+            return client;
         }
     }
 
-    // Клиент не найден
-    client = NULL;
-
-found_client_by_id:
-    return client;
+    return NULL;
 }
 
 /**
@@ -176,7 +180,7 @@ found_client_by_id:
 // поиск сервера по имени
 static struct server_t *find_server_by_name(const char *name)
 {
-    struct server_t *srv;
+    struct server_t *srv = NULL;
     list_for_each_entry(srv, &g_server_list, list)
     {
         if (strcmp(srv->m_name, name) == 0)
@@ -198,23 +202,19 @@ static struct client_t *find_client_by_task_from_server(
         return NULL;
     }
 
-    struct client_t *client = NULL;
+    struct servers_clients_t *sclient = NULL;
 
     // Итерируемся по списку клиентов
-    list_for_each_entry(client, &serv->m_clients, list)
+    list_for_each_entry(sclient , &serv->m_clients, list)
     {
-        if (client->m_task == task)
+        if (sclient->m_client->m_task == task)
         {
             // Нашли совпадение - сохраняем результат
-            goto found_client_by_task_from_server;
+            return sclient->m_client;
         }
     }
 
-    // Клиент не найден
-    client = NULL;
-
-found_client_by_task_from_server:
-    return client;
+    return NULL;
 };
 
 // добавление клиента к серверу
@@ -238,8 +238,13 @@ static int add_client_to_server(struct server_t *srv, struct client_t *cli)
     // Блокируем доступ к списку клиентов сервера
     mutex_lock(&g_lock);
 
+    // создание элемента списка
+    struct servers_clients_t *cl = kmalloc(sizeof(*cl), GFP_KERNEL);
+    INIT_LIST_HEAD(&cl->list);
+    cl->m_client = cli;
+
     // Добавляем клиента в конец списка
-    list_add_tail(&cli->list, &srv->m_clients);
+    list_add_tail(&cl->list, &srv->m_clients);
 
     // Устанавливаем обратную ссылку
     cli->m_server_ptr = srv;
@@ -295,9 +300,9 @@ static void server_destroy(struct server_t *srv)
         return;
     }
 
-    INF(" Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
+    INF("Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
 
-    struct client_t *cli, *tmp;
+    struct servers_clients_t *cli, *tmp;
 
     mutex_lock(&g_lock);
 
@@ -305,6 +310,7 @@ static void server_destroy(struct server_t *srv)
     list_for_each_entry_safe(cli, tmp, &srv->m_clients, list)
     {
         list_del(&cli->list);
+        kfree(cli);
     }
 
     // удаление сервера из глобального списка
@@ -351,6 +357,11 @@ static struct shm_t *shm_create(size_t size)
     atomic_set(&shm->m_is_writing, 0);
     INIT_LIST_HEAD(&shm->list);
 
+    // добавление в список общих паметей
+    mutex_lock(&g_lock);
+    list_add_tail(&shm->list, &g_shm_list);
+    mutex_unlock(&g_lock);
+
     INF("Shared memory allocated (%zu bytes)", shm->m_size);
 
     return shm;
@@ -368,12 +379,16 @@ static void shm_destroy(struct shm_t *shm)
 
     INF("Destroying shared memory (%zu bytes)", shm->m_size);
 
+    mutex_lock(&g_lock);
+
     // освобождение память под общую область
     if (shm->m_ptr)
         kfree(shm->m_ptr);
 
     // освобождение памяти под структуру
     kfree(shm);
+
+    mutex_unlock(&g_lock);
 }
 
 // начать запись в память
