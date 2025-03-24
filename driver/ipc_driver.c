@@ -655,7 +655,7 @@ static void __exit ipc_exit(void)
         server_destroy(server);
 
     // Очистка списка памятей
-    list_for_each_entry_safe(shm, shm_tmp, &g_server_list, list)
+    list_for_each_entry_safe(shm, shm_tmp, &g_shm_list, list)
         shm_destroy(shm);
 
     // удаление счетчика
