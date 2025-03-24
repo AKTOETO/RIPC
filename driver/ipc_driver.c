@@ -138,6 +138,37 @@ static void client_destroy(struct client_t *cli)
     kfree(cli);
 }
 
+// поиск клиента по id
+static struct client_t *find_client_by_id(int id)
+{
+    // проверка входных данных
+    if (id < 0)
+    {
+        ERR("find_client_by_id: Incorrect id: %d", id);
+        return NULL;
+    }
+
+    // проходимся по каждому клиенту и ищем подходящего
+
+    struct client_t *client = NULL;
+
+    // Итерируемся по списку клиентов
+    list_for_each_entry(client, &g_client_list, list)
+    {
+        if (client->m_id == id)
+        {
+            // Нашли совпадение - сохраняем результат
+            goto found_client_by_id;
+        }
+    }
+
+    // Клиент не найден
+    client = NULL;
+
+found_client_by_id:
+    return client;
+}
+
 /**
  * Серверные операции
  */
@@ -154,6 +185,70 @@ static struct server_t *find_server_by_name(const char *name)
         }
     }
     return NULL;
+}
+
+// поиск клиента из спсика сервера по task_struct
+static struct client_t *find_client_by_task_from_server(
+    struct task_struct *task, struct server_t *serv)
+{
+    // проверяем входные данные
+    if (!serv || !task)
+    {
+        ERR("Invalid input params");
+        return NULL;
+    }
+
+    struct client_t *client = NULL;
+
+    // Итерируемся по списку клиентов
+    list_for_each_entry(client, &serv->m_clients, list)
+    {
+        if (client->m_task == task)
+        {
+            // Нашли совпадение - сохраняем результат
+            goto found_client_by_task_from_server;
+        }
+    }
+
+    // Клиент не найден
+    client = NULL;
+
+found_client_by_task_from_server:
+    return client;
+};
+
+// добавление клиента к серверу
+static int add_client_to_server(struct server_t *srv, struct client_t *cli)
+{
+    // Проверка входных параметров
+    if (!srv || !cli)
+    {
+        ERR("add_client_to_server: Invalid arguments: srv=%p, cli=%p\n", srv, cli);
+        return -EINVAL;
+    }
+
+    // Проверка, что клиент ещё не привязан
+    if (cli->m_server_ptr)
+    {
+        ERR("add_client_to_server: Client %d already connected to server '%s'\n",
+            cli->m_id, cli->m_server_ptr->m_name);
+        return -EALREADY;
+    }
+
+    // Блокируем доступ к списку клиентов сервера
+    mutex_lock(&g_lock);
+
+    // Добавляем клиента в конец списка
+    list_add_tail(&cli->list, &srv->m_clients);
+
+    // Устанавливаем обратную ссылку
+    cli->m_server_ptr = srv;
+
+    // Разблокируем доступ
+    mutex_unlock(&g_lock);
+
+    INF("Client %d added to server '%s'\n", cli->m_id, srv->m_name);
+    return 0;
 }
 
 // создание сервера
@@ -318,13 +413,17 @@ static void shm_end_write(struct shm_t *shm)
  */
 static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    int err = 0, ret = 0;
+    int ret = 0;
     struct server_t *server = NULL;
     struct client_t *client = NULL;
+    struct client_t *client2 = NULL;
     struct shm_t *shm = NULL;
 
-    // registration server
+    // для регистрации сервера
     struct server_registration reg;
+
+    // для подключения клиента к серверу
+    struct connect_to_server con;
 
     // првоерка типа и номеров битовых полей, чтобы не декодировать неверные команды
     if (_IOC_TYPE(cmd) != IOCTL_MAGIC)
@@ -381,6 +480,74 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         }
 
         INF("REGISTER_CLIENT: New client is registered: %d", client->m_id);
+        break;
+
+        // подключение клиента к серверу
+    case IOCTL_CONNECT_TO_SERVER:
+        // копируем запрос поделючения к серверу из userspace
+        if (copy_from_user(&con, (char __user *)arg, sizeof(con)))
+        {
+            ERR("CONNECT_TO_SERVER: copy_from_user failed\n");
+            return -EFAULT;
+        }
+
+        // ищем клиента с con.id
+        client = find_client_by_id(con.client_id);
+
+        // если подключение с нужным сервером существует, выходим
+        if (client->m_server_ptr &&
+            strncmp(client->m_server_ptr->m_name, con.server_name, MAX_SERVER_NAME) == 0)
+        {
+            INF("CONNECT_TO_SERVER: client %d already connected to server %s",
+                con.client_id, con.server_name);
+            return -EEXIST;
+        }
+
+        // ищем сервер с таким именем
+        server = find_server_by_name(con.server_name);
+
+        // если не нашли сервер
+        if (!server)
+        {
+            ERR("CONNECT_TO_SERVER: there is no server with name: %s", con.server_name);
+            return -ENODATA;
+        }
+
+        // сервер найден, проверяем уже существующие подключения с процессом этого клиента
+        client2 = find_client_by_task_from_server(client->m_task, server);
+
+        // если существует клиент из того же процесса, с которого пытается подключиться
+        // еще один клиент, то просто даем еще одному клиенту ту же область памяти
+        if (client2)
+            client->m_shm_ptr = client2->m_shm_ptr;
+
+        // если же нет общей памяти у сервера с процессом,
+        // из которого к нему подключается клиент, то создаем ее
+        else
+        {
+            shm = shm_create(SHARED_MEM_SIZE);
+
+            // проверка создания памяти
+            if (!shm)
+            {
+                ERR("CONNECT_TO_SERVER: cant create shared memory for client %d and server %s",
+                    client->m_id, server->m_name);
+                return -ENOMEM;
+            }
+
+            // подключаем память к клиенту
+            client->m_shm_ptr = shm;
+        }
+
+        // подключаем клиента к серверу
+        if ((ret = add_client_to_server(server, client)))
+        {
+            ERR("CONNECT_TO_SERVER: failed to connect client %d to server %s",
+                client->m_id, server->m_name);
+            shm_destroy(shm);
+            return ret;
+        }
+
         break;
 
     default:
