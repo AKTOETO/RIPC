@@ -18,7 +18,7 @@
 
 // Устанавливаем префикс для journalctl -t RIPC
 #undef pr_fmt
-#define pr_fmt(fmt) "RIPC: %s:%d: " fmt, __FILE__, __LINE__
+#define pr_fmt(fmt) "RIPC: %s:%d: " fmt, __FUNCTION__, __LINE__
 #define INF(fmt, ...) pr_info(fmt "\n", ##__VA_ARGS__)
 #define ERR(fmt, ...) pr_err(fmt "\n", ##__VA_ARGS__)
 
@@ -385,6 +385,9 @@ static void shm_destroy(struct shm_t *shm)
     if (shm->m_ptr)
         kfree(shm->m_ptr);
 
+    // удаление памяти из общего списка
+    list_del(&shm->list);
+
     // освобождение памяти под структуру
     kfree(shm);
 
@@ -452,7 +455,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // регистрация нового сервера
     case IOCTL_REGISTER_SERVER:
         // копируем имя из userspace
-        if (copy_from_user(&reg, (char __user *)arg, sizeof(reg)))
+        if (copy_from_user(&reg, (void __user *)arg, sizeof(reg)))
         {
             ERR("REGISTER_SERVER: copy_from_user failed\n");
             return -EFAULT;
@@ -500,7 +503,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // подключение клиента к серверу
     case IOCTL_CONNECT_TO_SERVER:
         // копируем запрос поделючения к серверу из userspace
-        if (copy_from_user(&con, (char __user *)arg, sizeof(con)))
+        if (copy_from_user(&con, (void __user *)arg, sizeof(con)))
         {
             ERR("CONNECT_TO_SERVER: copy_from_user failed\n");
             return -EFAULT;
