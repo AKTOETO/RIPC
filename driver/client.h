@@ -1,0 +1,47 @@
+#ifndef CLIENT_H
+#define CLIENT_H
+#include "id.h"
+
+#include <linux/list.h>
+#include <linux/sched.h>
+
+/**
+ * Определение структуры клиента и операций над ней
+ */
+
+struct client_t
+{
+    int m_id;                      // id клиента в процессе
+    struct task_struct *m_task_p;  // указатель на задачу, где зарегистрирован сервер
+    struct connection_t *m_conn_p; // указатель на соединение с сервером и пмаятью
+    struct list_head list;         // список клиентов
+};
+
+// Список соединений и его блокировка
+extern struct list_head g_clients_list;
+extern struct mutex g_clients_lock;
+
+// генератор id для списка клиентов
+extern struct ida g_client_id_gen;
+
+/**
+ * Операции над объектом соединения
+ */
+// создание клиента
+struct client_t *client_create(void);
+
+// удаление клиента
+void client_destroy(struct client_t *cli);
+
+// поиск клиента по id
+struct client_t *find_client_by_id(int id);
+
+/**
+ * Операции над глобальным списком клиентов
+ */
+
+// удаление списка
+void delete_client_list(void);
+
+
+#endif // !CLIENT_H
