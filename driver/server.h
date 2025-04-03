@@ -15,6 +15,8 @@ struct server_t
     int m_id;                         // id клиента в процессе
     struct task_struct *m_task_p;     // указатель на задачу, где зарегистрирован сервер
     struct list_head connection_list; // список установленных подключений
+    struct mutex m_con_list_lock;     // блокировка списка соединений
+    struct mutex m_lock;              // блокировка доступа к серверу
     struct list_head list;            // список серверов
 };
 
@@ -23,7 +25,7 @@ extern struct list_head g_servers_list;
 extern struct mutex g_servers_lock;
 
 // генератор id для списка серверов
-extern struct ida g_servers_id_gen;
+// extern struct ida g_servers_id_gen;
 
 /**
  * Операции над объектом соединения
@@ -37,6 +39,9 @@ void server_destroy(struct server_t *srv);
 
 // поиск сервера по имени
 struct server_t *find_server_by_name(const char *name);
+
+// поиск сервера по id и pid
+struct server_t *find_server_by_id_pid(int id, pid_t pid);
 
 // поиск клиента из списка сервера по task_struct
 struct client_t *find_client_by_task_from_server(

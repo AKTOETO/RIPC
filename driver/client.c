@@ -8,7 +8,7 @@ LIST_HEAD(g_clients_list);
 DEFINE_MUTEX(g_clients_lock);
 
 // генератор id для списка клиентов
-DEFINE_ID_GENERATOR(g_client_id_gen);
+//DEFINE_ID_GENERATOR(g_client_id_gen);
 
 
 // создание клиента
@@ -22,7 +22,7 @@ struct client_t *client_create(void)
     }
 
     // Инициализация полей
-    cli->m_id = generate_id(&g_client_id_gen);
+    cli->m_id = generate_id(&g_id_gen);
     cli->m_conn_p = NULL;
     cli->m_task_p = current;
 
@@ -52,7 +52,7 @@ void client_destroy(struct client_t *cli)
     list_del(&cli->list);
     mutex_unlock(&g_clients_lock);
 
-    free_id(&g_client_id_gen, cli->m_id);
+    free_id(&g_id_gen, cli->m_id);
     kfree(cli);
 }
 
@@ -66,18 +66,52 @@ struct client_t *find_client_by_id(int id)
         return NULL;
     }
 
+    mutex_lock(&g_clients_lock);
+    
     // проходимся по каждому клиенту и ищем подходящего
     struct client_t *client = NULL;
-
+    
     // Итерируемся по списку клиентов
     list_for_each_entry(client, &g_clients_list, list)
     {
         if (client->m_id == id)
         {
+            mutex_unlock(&g_clients_lock);
             // Нашли совпадение - сохраняем результат
             return client;
         }
     }
+    mutex_unlock(&g_clients_lock);
+
+    return NULL;
+}
+
+
+struct client_t *find_client_by_id_pid(int id, pid_t pid)
+{
+    // проверка входных данных
+    if (id < 0)
+    {
+        ERR("find_client_by_id: Incorrect id: %d", id);
+        return NULL;
+    }
+
+    mutex_lock(&g_clients_lock);
+    
+    // проходимся по каждому клиенту и ищем подходящего
+    struct client_t *client = NULL;
+    
+    // Итерируемся по списку клиентов
+    list_for_each_entry(client, &g_clients_list, list)
+    {
+        if (client->m_task_p->pid == pid && client->m_id == id)
+        {
+            mutex_unlock(&g_clients_lock);
+            // Нашли совпадение - сохраняем результат
+            return client;
+        }
+    }
+    mutex_unlock(&g_clients_lock);
 
     return NULL;
 }
@@ -94,5 +128,5 @@ void delete_client_list()
         client_destroy(cl);
     
     // удаление генератора id
-    DELETE_ID_GENERATOR(&g_client_id_gen);
+    //DELETE_ID_GENERATOR(&g_client_id_gen);
 }

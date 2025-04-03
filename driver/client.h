@@ -22,7 +22,7 @@ extern struct list_head g_clients_list;
 extern struct mutex g_clients_lock;
 
 // генератор id для списка клиентов
-extern struct ida g_client_id_gen;
+//extern struct ida g_client_id_gen;
 
 /**
  * Операции над объектом соединения
@@ -35,6 +35,9 @@ void client_destroy(struct client_t *cli);
 
 // поиск клиента по id
 struct client_t *find_client_by_id(int id);
+
+// поиск клиента по id и pid
+struct client_t *find_client_by_id_pid(int id, pid_t pid);
 
 /**
  * Операции над глобальным списком клиентов

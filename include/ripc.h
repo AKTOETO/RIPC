@@ -3,6 +3,10 @@
 
 #include <linux/ioctl.h>
 
+#ifndef PAGE_SIZE
+#define PAGE_SIZE 4096
+#endif
+
 /* Константы драйвера */
 #define DEVICE_NAME "ripc"                  // Имя устройства в /dev
 #define CLASS_NAME "ripc"                   // имя класса устройств
@@ -27,6 +31,13 @@ struct connect_to_server
 {
     int client_id;
     char server_name[MAX_SERVER_NAME];
+};
+
+// SIGNAL NEW_CONNECTION
+struct new_connection
+{
+    int client_pid;
+    int client_id;
 };
 
 /*

@@ -12,7 +12,7 @@ LIST_HEAD(g_servers_list);
 DEFINE_MUTEX(g_servers_lock);
 
 // генератор id для списка клиентов
-DEFINE_ID_GENERATOR(g_servers_id_gen);
+// DEFINE_ID_GENERATOR(g_servers_id_gen);
 
 /**
  * Операции над объектом соединения
@@ -38,9 +38,13 @@ struct server_t *server_create(const char *name)
 
     // Инициализация полей
     strscpy(srv->m_name, name, MAX_SERVER_NAME);
-    srv->m_id = generate_id(&g_servers_id_gen);
+    srv->m_id = generate_id(&g_id_gen);
     INIT_LIST_HEAD(&srv->connection_list);
     srv->m_task_p = current;
+
+    // инициализация блокировок
+    mutex_init(&srv->m_lock);
+    mutex_init(&srv->m_con_list_lock);
 
     // добавление в главный список
     mutex_lock(&g_servers_lock);
@@ -67,9 +71,8 @@ void server_destroy(struct server_t *srv)
     // для безопасного удаления
     struct connection_t *con, *tmp;
 
-    mutex_lock(&g_servers_lock);
-
     // Удаление списка клиентов
+    mutex_lock(&srv->m_con_list_lock);
     list_for_each_entry_safe(con, tmp, &srv->connection_list, list)
     {
         // удаление из списка подключенных клиентов к серверу
@@ -78,12 +81,14 @@ void server_destroy(struct server_t *srv)
         // удаление из общего списка и очистка памяти
         delete_connection(con);
     }
+    mutex_unlock(&srv->m_con_list_lock);
 
     // удаление сервера из глобального списка
+    mutex_unlock(&g_servers_lock);
     list_del(&srv->list);
     mutex_unlock(&g_servers_lock);
 
-    free_id(&g_servers_id_gen, srv->m_id);
+    free_id(&g_id_gen, srv->m_id);
     kfree(srv);
 }
 
@@ -101,6 +106,36 @@ struct server_t *find_server_by_name(const char *name)
     return NULL;
 }
 
+// поиск сервера
+struct server_t *find_server_by_id_pid(int id, pid_t pid)
+{
+    // проверка входных данных
+    if (id < 0)
+    {
+        ERR("Incorrect id: %d", id);
+        return NULL;
+    }
+
+    mutex_lock(&g_servers_lock);
+
+    // проходимся по каждому клиенту и ищем подходящего
+    struct server_t *server = NULL;
+
+    // Итерируемся по списку клиентов
+    list_for_each_entry(server, &g_clients_list, list)
+    {
+        if (server->m_task_p->pid == pid && server->m_id == id)
+        {
+            mutex_unlock(&g_servers_lock);
+            // Нашли совпадение - сохраняем результат
+            return server;
+        }
+    }
+    mutex_unlock(&g_servers_lock);
+
+    return NULL;
+}
+
 // поиск клиента из списка сервера по task_struct
 struct client_t *find_client_by_task_from_server(
     struct task_struct *task, struct server_t *serv)
@@ -115,15 +150,18 @@ struct client_t *find_client_by_task_from_server(
     // соединение с клиентом и памятью
     struct connection_t *conn = NULL;
 
+    mutex_lock(&serv->m_con_list_lock);
     // Итерируемся по списку подключений
     list_for_each_entry(conn, &serv->connection_list, list)
     {
         if (conn->m_client_p->m_task_p == task)
         {
             // Нашли совпадение - сохраняем результат
+            mutex_unlock(&serv->m_con_list_lock);
             return conn->m_client_p;
         }
     }
+    mutex_unlock(&serv->m_con_list_lock);
     return NULL;
 }
 
@@ -170,8 +208,10 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     // подключение обратных ссылок
     client->m_conn_p = con;
     server_add_connection(server, con);
+    // увеличиваем счетчик подключенных клиентов к памяти
     atomic_inc(&shm->m_num_of_conn);
 
+    
     INF("Client %d connected to server '%s'", client->m_id, server->m_name);
     return 0;
 }
@@ -186,10 +226,10 @@ void server_add_connection(struct server_t *srv, struct connection_t *con)
         return;
     }
 
-    // глобальная блокировка серверов для добавления в список соединений
-    mutex_lock(&g_servers_lock);
+    // блокировка списка соединений сервера для добавления нового соединения
+    mutex_lock(&srv->m_con_list_lock);
     list_add(&con->list, &srv->connection_list);
-    mutex_unlock(&g_servers_lock);
+    mutex_unlock(&srv->m_con_list_lock);
 }
 
 // удалить подключение
@@ -203,10 +243,10 @@ void server_delete_connection(struct server_t *srv, struct connection_t *con)
     }
 
     // глобальная блокировка серверов для добавления в список соединений
-    mutex_lock(&g_servers_lock);
+    mutex_lock(&srv->m_con_list_lock);
     list_del(&con->list);
     delete_connection(con);
-    mutex_unlock(&g_servers_lock);
+    mutex_unlock(&srv->m_con_list_lock);
 }
 
 /**
@@ -221,5 +261,5 @@ void delete_server_list()
         server_destroy(server);
 
     // удаление генератора id
-    DELETE_ID_GENERATOR(&g_servers_id_gen);
+    // DELETE_ID_GENERATOR(&g_servers_id_gen);
 }

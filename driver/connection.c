@@ -22,6 +22,7 @@ struct connection_t *create_connection(
     con->m_mem_p = mem;
     con->m_server_p = server;
     INIT_LIST_HEAD(&con->list);
+    atomic_set(&con->m_serv_mmaped, 0);
 
     return con;
 }

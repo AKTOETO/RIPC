@@ -1,5 +1,7 @@
 #include "id.h"
 
+DEFINE_ID_GENERATOR(g_id_gen);
+
 // Макросы для генерации и освобождения ID
 int generate_id(struct ida *name)
 {

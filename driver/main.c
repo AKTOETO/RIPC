@@ -9,9 +9,10 @@
 #include <linux/signal.h>
 #include <linux/mutex.h>
 #include <linux/errno.h>
-#include <linux/atomic.h> // атомарные операции
-#include <linux/io.h>     // Добавлено для virt_to_phys
-#include <linux/cdev.h>   // Символьные устройства cdev
+#include <linux/atomic.h>    // атомарные операции
+#include <linux/io.h>        // Добавлено для virt_to_phys
+#include <asm/pgtable.h>     // макросы для работы с таблицей страниц
+#include <linux/cdev.h>      // Символьные устройства cdev
 #include <asm/ioctl.h>       // Для доп проверок в ioctl
 #include "../include/ripc.h" // константы для драйвера
 #include "err.h"             // макросы для логов
@@ -28,17 +29,16 @@ static dev_t g_dev_num;           // Номер устройства (major+mino
 static struct class *g_dev_class; // Класс устройства
 static struct cdev g_cdev;        // Структура символьного устройства
 
-
 /**
  * Обработчик ioctl()
  */
 static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    //int ret = 0;
+    // int ret = 0;
     struct server_t *server = NULL;
     struct client_t *client = NULL;
-    //struct client_t *client2 = NULL;
-    //struct shm_t *shm = NULL;
+    // struct client_t *client2 = NULL;
+    // struct shm_t *shm = NULL;
 
     // для регистрации сервера
     struct server_registration reg;
@@ -137,7 +137,6 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
         // подключение клиента к серверу
         connect_client_to_server(server, client);
-
         break;
 
     default:
@@ -147,11 +146,119 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     return 0;
 }
 
+/**
+ * Обработчик mmap
+ */
 static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
 {
+    int ret = 0;
+    // Извлекаем offset (в нем передается id)
+    unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
+    struct client_t *client = NULL;
+    struct server_t *server = NULL;
+    struct shm_t *shm = NULL;
+    struct connection_t *conn = NULL;
+
+    // TODO: пока еще нет ограничений на id, в будущем переделать
+    // Проверяем корректность offset (должен содержать id клиента/сервера)
+    // if (offset < MIN_ID || offset > MAX_ID) {
+    //     pr_err("Invalid offset (expected ID in range [%d-%d])\n", MIN_ID, MAX_ID);
+    //     return -EINVAL;
+    // }
+    // id не может быть отрицательным
+    if (offset < 0)
+    {
+        ERR("Incorrect id: %ld", offset);
+        return -EINVAL;
+    }
+    int target_id = (int)offset;
+
+    /**
+     * Нужно найти зарегистрированного клиента или сервера,
+     * который запросил отображение памяти
+     */
+
+    // ищем клиента
+    client = find_client_by_id_pid(target_id, current->pid);
+
+    // если current+id - это клиент
+    if (client)
+    {
+        // сохраняем соединение, в котором нужная нам память
+        conn = client->m_conn_p;
+
+        // TODO: отправляем сигнал на сервер, что нужно отобразить память
+        goto found;
+    }
+    client = NULL;
+
+    // ищем сервер, если это был не клиент
+    server = find_server_by_id_pid(target_id, current->pid);
+
+    // если current+id - это сервер
+    if (server)
+    {
+        // сохраняем соединение, в котором нужная нам память
+        if (!list_empty(&server->connection_list))
+            // TODO: нужно возвращать последний неотображенный кусок памяти, потому что
+            // нескольлко клиентов могу одновременно добавить себя в список.
+            // В connection_t есть флаг для проверки этого.
+            // TODO: Также нужно вернуть серверу id клиента, 
+            // для общения с которым была отображена память
+            conn = list_last_entry(&server->connection_list, struct connection_t, list);
+        else
+        {
+            INF("There is no connection to '%s' server", server->m_name);
+            return -ENOENT;
+        }
+        goto found;
+    }
+    server = NULL;
+
+    ERR("No client/server with ID %d found for PID %d\n", target_id, current->pid);
+    return -ENOENT;
+
+found:
+    // Проверяем, что соединение и общая память существуют
+    if (!conn || !conn->m_mem_p)
+    {
+        ERR("Connection or shared memory is NULL\n");
+        return -EFAULT;
+    }
+    shm = conn->m_mem_p;
+
+    // TODO: добавить проверку прав доступа мб
+    // // Проверяем права доступа (процесс должен быть владельцем)
+    // if (shm->m_owner_pid != current->pid)
+    // {
+    //     ERR("Process %d has no access to shm %p\n", current->pid, shm);
+    //     return -EACCES;
+    // }
+
+    // Отображаем физическую память в пользовательское пространство
+    ret = remap_pfn_range(vma,
+                          vma->vm_start,
+                          virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
+                          shm->m_size,
+                          vma->vm_page_prot);
+    if (ret)
+    {
+        ERR("remap_pfn_range failed: %d\n", ret);
+        return ret;
+    }
+
+    // Увеличиваем счетчик подключений клиентов к памяти
+    if (client)
+    {
+        atomic_inc(&shm->m_num_of_conn);
+    }
+
+    INF("MMAP: PID %d mapped shm %p (size: %zu)\n", current->pid, shm, shm->m_size);
+
     // return remap_pfn_range(vma, vma->vm_start, virt_to_phys(shared_buffer) >> PAGE_SHIFT,
     //                        vma->vm_end - vma->vm_start, vma->vm_page_prot);
-    return (long)0;
+
+    return 0;
 }
 
 // Операции файла драйвера
@@ -236,6 +343,9 @@ static void __exit ipc_exit(void)
     delete_shm_list();
     delete_server_list();
     delete_client_list();
+
+    // удаление глобального генераора id
+    DELETE_ID_GENERATOR(&g_id_gen);
 
     // удаление структур драйвера
     cdev_del(&g_cdev);

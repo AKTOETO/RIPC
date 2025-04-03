@@ -3,6 +3,7 @@
 
 #include <linux/list.h>
 #include <linux/mutex.h>
+#include <linux/atomic.h>
 
 #include "client.h"
 #include "server.h"
@@ -17,6 +18,7 @@ struct connection_t
     struct client_t *m_client_p;
     struct server_t *m_server_p;
     struct shm_t *m_mem_p;
+    atomic_t m_serv_mmaped; // отображена ли общая память на сервер
     struct list_head list;
 };
 

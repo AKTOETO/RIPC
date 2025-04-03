@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h> // для mmap и мамкросов его
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,14 @@
 #define MAX_INPUT_LEN 256
 #define DEVICE_PATH "/dev/" DEVICE_NAME
 
+// структура для хранения информации о памяти
+struct shm_info
+{
+    void *addr;
+    size_t size;
+    bool mapped;
+};
+
 void print_commands()
 {
     printf("\nAvailable commands:\n");
@@ -17,7 +26,8 @@ void print_commands()
     printf("2. register-client         - Register new client\n");
     printf("3. connect <server_name>   - Connect client to server\n");
     printf("4. show [client|server]    - Show client or server data\n");
-    printf("5. exit                    - Exit application\n");
+    printf("5. mmap [client|server]    - Map shared memory for client or for server\n");
+    printf("6. exit                    - Exit application\n");
 }
 
 int main()
@@ -29,6 +39,8 @@ int main()
 
     struct connect_to_server con = {0};
     struct server_registration reg = {0};
+    struct shm_info shm_c = {0};
+    struct shm_info shm_s = {0};
 
     // Открываем устройство
     fd = open(DEVICE_PATH, O_RDWR);
@@ -113,6 +125,88 @@ int main()
             {
                 printf("Client %d connected to server '%s'\n",
                        con.client_id, con.server_name);
+            }
+        }
+        // отображение памяти
+        else if (strcmp(command, "mmap") == 0)
+        {
+            if (!arg)
+            {
+                printf("Specify [client|server]\n");
+                continue;
+            }
+
+            if (strcmp(arg, "client") == 0)
+            {
+                if (con.client_id == -1)
+                {
+                    printf("Register and connect client first!\n");
+                    continue;
+                }
+
+                if (shm_c.mapped)
+                {
+                    printf("Client memory already mapped!\n");
+                    continue;
+                }
+
+                // Вызываем mmap с client_id в качестве offset
+                shm_c.addr = mmap(NULL,
+                                  SHARED_MEM_SIZE,
+                                  PROT_READ | PROT_WRITE,
+                                  MAP_SHARED,
+                                  fd,
+                                  con.client_id);
+
+                if (shm_c.addr == MAP_FAILED)
+                {
+                    perror("Client mmap failed");
+                    shm_c.mapped = false;
+                }
+                else
+                {
+                    shm_c.size = SHARED_MEM_SIZE;
+                    shm_c.mapped = true;
+                    printf("Client memory mapped at: %p\n", shm_c.addr);
+                }
+            }
+            else if (strcmp(arg, "server") == 0)
+            {
+                if (reg.server_id == -1)
+                {
+                    printf("Register server first!\n");
+                    continue;
+                }
+
+                if (shm_s.mapped)
+                {
+                    printf("Server memory already mapped!\n");
+                    continue;
+                }
+
+                // Вызываем mmap с server_id в качестве offset
+                shm_s.addr = mmap(NULL,
+                                  SHARED_MEM_SIZE,
+                                  PROT_READ | PROT_WRITE,
+                                  MAP_SHARED,
+                                  fd,
+                                  reg.server_id);
+
+                if (shm_s.addr == MAP_FAILED)
+                {
+                    perror("Server mmap failed");
+                    shm_s.mapped = false;
+                }
+                else
+                {
+                    shm_s.size = SHARED_MEM_SIZE;
+                    shm_s.mapped = true;
+                    printf("Server memory mapped at: %p\n", shm_s.addr);
+                }
+            }
+            else
+            {
+                printf("Unknown type: %s. Use [client|server]\n", arg);
             }
         }
         else if (strcmp(command, "show") == 0)

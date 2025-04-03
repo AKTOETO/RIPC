@@ -4,6 +4,9 @@
 #include <linux/idr.h>
 #include "err.h"
 
+// глобальный генератор id
+extern struct ida g_id_gen;
+
 // определение генератора
 #define DEFINE_ID_GENERATOR(name) DEFINE_IDA(name)
 
@@ -13,7 +16,5 @@
 // Макросы для генерации и освобождения ID
 int generate_id(struct ida *name);
 void free_id(struct ida *name, int id);
-
-// удаление генератора
 
 #endif /* ID_GENERATOR_H */
