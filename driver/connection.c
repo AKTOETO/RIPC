@@ -24,6 +24,9 @@ struct connection_t *create_connection(
     INIT_LIST_HEAD(&con->list);
     atomic_set(&con->m_serv_mmaped, 0);
 
+    INF("Created new connection btw serv: %d client: %d shm: %d", 
+        client->m_id, server->m_id, mem->m_id);
+
     return con;
 }
 

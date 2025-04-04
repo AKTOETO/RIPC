@@ -16,6 +16,12 @@
 #define DEVICE_PATH "/dev/" DEVICE_NAME
 
 /**
+ * SIGNALS
+ */
+
+ #define NEW_CONNECTION SIGUSR1
+
+/**
  * IOCTL data for commands
  */
 

@@ -6,6 +6,8 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 
+#include "id.h"
+
 /**
  * Описание структуры общей памяти и функций работы с ней
  */
@@ -13,11 +15,12 @@
 // Общая память
 struct shm_t
 {
-    void *m_mem_p;                 // указатеь на область общей памяти
-    size_t m_size;                 // размер общей памяти
-    atomic_t m_is_writing;         // флаг: пишет ли кто-то в память или нет
-    atomic_t m_num_of_conn;        // количество подключенных клиентов
-    struct list_head list;         // список областей памяти
+    int m_id;               // идентификатор области памяти
+    void *m_mem_p;          // указатеь на область общей памяти
+    size_t m_size;          // размер общей памяти
+    atomic_t m_is_writing;  // флаг: пишет ли кто-то в память или нет
+    atomic_t m_num_of_conn; // количество подключенных клиентов
+    struct list_head list;  // список областей памяти
 };
 
 // Список соединений и его блокировка
@@ -44,7 +47,7 @@ void shm_end_write(struct shm_t *shm);
  * Операции над глобальным списком
  */
 
- // удаление списка
+// удаление списка
 void delete_shm_list(void);
 
 #endif // !SHM_H

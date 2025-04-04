@@ -110,11 +110,12 @@ struct server_t *find_server_by_name(const char *name)
 struct server_t *find_server_by_id_pid(int id, pid_t pid)
 {
     // проверка входных данных
-    if (id < 0)
+    if (!IS_ID_VALID(id))
     {
         ERR("Incorrect id: %d", id);
         return NULL;
     }
+    INF("Finding server with ID: %d PID: %d", id, pid);
 
     mutex_lock(&g_servers_lock);
 
@@ -122,9 +123,9 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     struct server_t *server = NULL;
 
     // Итерируемся по списку клиентов
-    list_for_each_entry(server, &g_clients_list, list)
+    list_for_each_entry(server, &g_servers_list, list)
     {
-        if (server->m_task_p->pid == pid && server->m_id == id)
+        if (server->m_task_p && server->m_task_p->pid == pid && server->m_id == id)
         {
             mutex_unlock(&g_servers_lock);
             // Нашли совпадение - сохраняем результат
@@ -168,6 +169,8 @@ struct client_t *find_client_by_task_from_server(
 // добавление клиента к серверу
 int connect_client_to_server(struct server_t *server, struct client_t *client)
 {
+    INF("Connecting client '%d' to server '%d'", client->m_id, server->m_id);
+
     // общая память
     struct shm_t *shm = NULL;
 
@@ -178,7 +181,11 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     // если существует клиент из того же процесса, с которого пытается подключиться
     // еще один клиент, то просто даем еще одному клиенту ту же область памяти
     if (client2)
+    {
+        INF("Shared memory btw client pid: %d and server pid: %d already exist",
+            client->m_task_p->pid, server->m_task_p->pid);
         shm = client2->m_conn_p->m_mem_p;
+    }
 
     // если же нет общей памяти у сервера с процессом,
     // из которого к нему подключается клиент, то создаем ее
@@ -211,8 +218,9 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     // увеличиваем счетчик подключенных клиентов к памяти
     atomic_inc(&shm->m_num_of_conn);
 
-    
     INF("Client %d connected to server '%s'", client->m_id, server->m_name);
+    INF("Cur num of clients conected to shm (ID:%d) = %d",
+        con->m_mem_p->m_id, atomic_read(&con->m_mem_p->m_num_of_conn));
     return 0;
 }
 
@@ -247,6 +255,34 @@ void server_delete_connection(struct server_t *srv, struct connection_t *con)
     list_del(&con->list);
     delete_connection(con);
     mutex_unlock(&srv->m_con_list_lock);
+}
+
+struct connection_t *server_find_conn_by_id(struct server_t *srv, int shm_id)
+{
+    // проверяем входные данные
+    if (!IS_ID_VALID(shm_id))
+    {
+        ERR("Invalid input params");
+        return NULL;
+    }
+
+    // соединение с клиентом и памятью
+    struct connection_t *conn = NULL;
+
+    mutex_lock(&srv->m_con_list_lock);
+    // Итерируемся по списку подключений
+    list_for_each_entry(conn, &srv->connection_list, list)
+    {
+        if (conn->m_mem_p && conn->m_mem_p->m_id == shm_id)
+        {
+            INF("shm id: %d", shm_id);
+            // Нашли совпадение - сохраняем результат
+            mutex_unlock(&srv->m_con_list_lock);
+            return conn;
+        }
+    }
+    mutex_unlock(&srv->m_con_list_lock);
+    return NULL;
 }
 
 /**

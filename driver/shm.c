@@ -40,6 +40,7 @@ struct shm_t *shm_create(size_t size)
     }
 
     // инициализация полей
+    shm->m_id = generate_id(&g_id_gen);
     shm->m_size = size;
     atomic_set(&shm->m_is_writing, 0);
     atomic_set(&shm->m_num_of_conn, 0);
@@ -48,10 +49,10 @@ struct shm_t *shm_create(size_t size)
 
     // добавление в список общих паметей
     mutex_lock(&g_shm_lock);
-    list_add_tail(&shm->list, &g_shm_list);
+    list_add(&shm->list, &g_shm_list);
     mutex_unlock(&g_shm_lock);
 
-    INF("Shared memory allocated (%zu bytes)", shm->m_size);
+    INF("Shared memory allocated (ID:%d) (%zu bytes)", shm->m_id, shm->m_size);
 
     return shm;
 }
@@ -67,6 +68,9 @@ void shm_destroy(struct shm_t *shm)
     }
 
     INF("Destroying shared memory (%zu bytes)", shm->m_size);
+
+    // освобождение id
+    free_id(&g_id_gen, shm->m_id);
 
     mutex_lock(&g_shm_lock);
 

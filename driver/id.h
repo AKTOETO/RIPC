@@ -3,6 +3,7 @@
 
 #include <linux/idr.h>
 #include "err.h"
+#include "id_pack.h"
 
 // глобальный генератор id
 extern struct ida g_id_gen;

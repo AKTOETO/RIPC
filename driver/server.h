@@ -56,6 +56,9 @@ void server_add_connection(struct server_t *srv, struct connection_t *con);
 // удаление соединения
 void server_delete_connection(struct server_t *srv, struct connection_t *con);
 
+// поиск соединения с необходимой памятью
+struct connection_t* server_find_conn_by_id(struct server_t* srv, int shm_id);
+
 /**
  * Операции над глобальным списком серверов
  */

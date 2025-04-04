@@ -8,7 +8,8 @@ dripc-y := id.o connection.o client.o server.o shm.o main.o
 
 # Добавляем каталог include
 #EXTRA_CFLAGS += -I$(CURDIR)/../include
-ccflags-y += -I$(PWD)/include
+ccflags-y += -I$(PWD)/include 
+ccflags-y += -I$(PWD)/driver 
 #ccflags-y += -I$(CURDIR)/.../include
 
 # Путь к ядру
