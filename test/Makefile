@@ -3,7 +3,8 @@ TEST_SRC = test.c
 TEST_BIN = test
 
 # Добавляем каталог include
-CFLAGS = -I$(CURDIR)/../include -Wall -Wextra
+CFLAGS = -I$(CURDIR)/../include -Wall -Wextra -g -fsanitize=address -fno-omit-frame-pointer
+LDFLAGS = -fsanitize=address
 
 default: help
 

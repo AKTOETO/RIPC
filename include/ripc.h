@@ -51,8 +51,8 @@ struct new_connection
  */
 #define IOCTL_MAGIC '/'
 #define IOCTL_REGISTER_SERVER   _IOWR(IOCTL_MAGIC, 1, struct server_registration) // регистрация сервера в системе
-#define IOCTL_REGISTER_CLIENT   _IOR (IOCTL_MAGIC, 2, int)                         // регистрация клиента
-#define IOCTL_CONNECT_TO_SERVER _IOW (IOCTL_MAGIC, 3, struct connect_to_server)  // подключение к серверу
+#define IOCTL_REGISTER_CLIENT   _IOR (IOCTL_MAGIC, 2, int)                        // регистрация клиента
+#define IOCTL_CONNECT_TO_SERVER _IOW (IOCTL_MAGIC, 3, struct connect_to_server)   // подключение к серверу
 
 #define IOCTL_MAX_NUM 3 // максимальное количество команд
 
