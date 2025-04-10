@@ -22,6 +22,10 @@ struct connection_t
     struct list_head list;
 };
 
+// Список соединений и его блокировка
+extern struct list_head g_conns_list;
+extern struct mutex g_conns_lock;
+
 /**
  * Операции над объектом соединения
  */
@@ -32,7 +36,19 @@ struct connection_t *create_connection(
     struct server_t *server,
     struct shm_t *mem);
 
+// поиск соединения между двумя процессами
+struct connection_t *find_connection(
+    struct task_struct *task1,
+    struct task_struct *task2);
+
 // удаление соединения
 void delete_connection(struct connection_t *con);
+
+/**
+ * Операции над глобальным списком серверов
+ */
+
+// удаление списка
+void delete_connection_list(void);
 
 #endif // !CONNECTION_H

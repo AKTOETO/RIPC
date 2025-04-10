@@ -34,6 +34,7 @@ static struct cdev g_cdev;        // Структура символьного �
  */
 static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+    INF("=== new ioctl request ===");
     int ret = 0;
     struct server_t *server = NULL;
     struct client_t *client = NULL;
@@ -100,7 +101,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             return -EFAULT;
         }
 
-        INF("REGISTER_CLIENT: New client is registered: %d", client->m_id);
+        INF("REGISTER_CLIENT: New client is registered: (ID:%d) (PID:%d)", client->m_id, client->m_task_p->pid);
         break;
 
         // подключение клиента к серверу
@@ -123,8 +124,6 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             return -EEXIST;
         }
 
-        // Клиент не подключен никуда
-
         // ищем сервер с подходящим именем
         server = find_server_by_name(con.server_name);
 
@@ -135,10 +134,10 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             return -ENODATA;
         }
 
-        // подключение клиента к серверу
+        // подключаем клиента к серверу
         ret = connect_client_to_server(server, client);
 
-        if(ret != 0)
+        if (ret != 0)
         {
             ERR("CONNECT_TO_SERVER: connect_client_to_server: %d", ret);
             return ret;
@@ -157,6 +156,8 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
  */
 static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
 {
+    INF("=== new mmap request ===");
+
     int ret = 0;
     // Получаем упакованный ID из смещения в СТРАНИЦАХ ---
     // vma->vm_pgoff содержит (offset_из_userspace / PAGE_SIZE),
@@ -261,18 +262,19 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     // если current+id - это сервер
     if (server)
     {
+        
         // сохраняем соединение, в котором нужная нам память
-        if (!list_empty(&server->connection_list))
+        if (!list_empty(&server->connection_list.list))
         {
             // нужно знать shm_id для поиска памяти
             if (shm_id != 0)
             {
                 // ищем нужную память
-                conn = server_find_conn_by_id(server, shm_id);
+                conn = server_find_conn_by_id(server, shm_id)->conn;
             }
             else
             {
-                // Cервер не должен вызывать mmap с shm_id=0, потому что общая память 
+                // Cервер не должен вызывать mmap с shm_id=0, потому что общая память
                 // не может создаться до создания клиента или сервера, которые заберут начальные id.
                 ERR("Server %d (pid %d) called mmap with shm_id=0.", target_id, current->pid);
                 return -EINVAL;
@@ -411,10 +413,12 @@ class_fail:
 
 static void __exit ipc_exit(void)
 {
+    INF("=== exiting ===");
     // удаление глобальных списков
     delete_shm_list();
     delete_server_list();
     delete_client_list();
+    delete_connection_list();
 
     // удаление глобального генераора id
     DELETE_ID_GENERATOR(&g_id_gen);

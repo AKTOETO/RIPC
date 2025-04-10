@@ -896,14 +896,15 @@ void process_command(char *input)
             // запись в память
             else if (arg2 && strcmp(arg2, "write") == 0)
             {
+                char *str_offset = strtok(arg4, " ");
+                char *p_end;
+                char *text = strtok(NULL, "");
+
                 // получение client_id и проверка: есть ли сдвиг с текстом
-                if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4)
+                if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4 && str_offset && text)
                 {
                     // получение сдвига и текста
-                    char *str_offset = strtok(arg4, " ");
-                    char *p_end;
                     offset = strtol(str_offset, &p_end, 10);
-                    char *text = strtok(NULL, "");
 
                     // запись
                     server_write(index, index2, offset, text);
@@ -916,14 +917,15 @@ void process_command(char *input)
             // чтение из памяти
             else if (arg2 && strcmp(arg2, "read") == 0)
             {
+                // получение сдвига и текста
+                char *str_offset = strtok(arg4, " ");                
+                char *p_end;
+                char *str_len = strtok(NULL, "");
+                
                 // получение client_id и проверка: есть ли сдвиг с длинной текста
-                if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4)
+                if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4 && str_offset && str_len)
                 {
-                    // получение сдвига и текста
-                    char *str_offset = strtok(arg4, " ");
-                    char *p_end;
                     offset = strtol(str_offset, &p_end, 10);
-                    char *str_len = strtok(NULL, "");
                     length = strtol(str_len, &p_end, 10);
 
                     // чтение

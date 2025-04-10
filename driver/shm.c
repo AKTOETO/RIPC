@@ -67,7 +67,7 @@ void shm_destroy(struct shm_t *shm)
         return;
     }
 
-    INF("Destroying shared memory (%zu bytes)", shm->m_size);
+    INF("Destroying shared memory (ID:%d)(%zu bytes)", shm->m_id, shm->m_size);
 
     // освобождение id
     free_id(&g_id_gen, shm->m_id);

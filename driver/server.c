@@ -11,9 +11,6 @@
 LIST_HEAD(g_servers_list);
 DEFINE_MUTEX(g_servers_lock);
 
-// генератор id для списка клиентов
-// DEFINE_ID_GENERATOR(g_servers_id_gen);
-
 /**
  * Операции над объектом соединения
  */
@@ -39,7 +36,7 @@ struct server_t *server_create(const char *name)
     // Инициализация полей
     strscpy(srv->m_name, name, MAX_SERVER_NAME);
     srv->m_id = generate_id(&g_id_gen);
-    INIT_LIST_HEAD(&srv->connection_list);
+    INIT_LIST_HEAD(&srv->connection_list.list);
     srv->m_task_p = current;
 
     // инициализация блокировок
@@ -66,20 +63,20 @@ void server_destroy(struct server_t *srv)
         return;
     }
 
-    INF("Destroying server '%s' (ID: %d)", srv->m_name, srv->m_id);
+    INF("Destroying server (ID:%d)(PID:%d)(NAME:%s)", srv->m_id, srv->m_task_p->pid, srv->m_name);
 
     // для безопасного удаления
-    struct connection_t *con, *tmp;
+    struct serv_conn_list_t *con, *tmp;
 
-    // Удаление списка клиентов
+    // Удаление списка соединений
     mutex_lock(&srv->m_con_list_lock);
-    list_for_each_entry_safe(con, tmp, &srv->connection_list, list)
+    list_for_each_entry_safe(con, tmp, &srv->connection_list.list, list)
     {
         // удаление из списка подключенных клиентов к серверу
         list_del(&con->list);
 
-        // удаление из общего списка и очистка памяти
-        delete_connection(con);
+        // очистка памяти
+        kfree(con);
     }
     mutex_unlock(&srv->m_con_list_lock);
 
@@ -127,6 +124,8 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     {
         if (server->m_task_p && server->m_task_p->pid == pid && server->m_id == id)
         {
+            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
+                server->m_id, server->m_task_p->pid, server->m_name);
             mutex_unlock(&g_servers_lock);
             // Нашли совпадение - сохраняем результат
             return server;
@@ -149,17 +148,18 @@ struct client_t *find_client_by_task_from_server(
     }
 
     // соединение с клиентом и памятью
-    struct connection_t *conn = NULL;
+    struct serv_conn_list_t *conn = NULL;
 
     mutex_lock(&serv->m_con_list_lock);
     // Итерируемся по списку подключений
-    list_for_each_entry(conn, &serv->connection_list, list)
+    list_for_each_entry(conn, &serv->connection_list.list, list)
     {
-        if (conn->m_client_p->m_task_p == task)
+        INF("\tcomapre connected PID: %d and requested PID: %d", task->pid, conn->conn->m_client_p->m_task_p->pid);
+        if (conn->conn->m_client_p->m_task_p == task)
         {
             // Нашли совпадение - сохраняем результат
             mutex_unlock(&serv->m_con_list_lock);
-            return conn->m_client_p;
+            return conn->conn->m_client_p;
         }
     }
     mutex_unlock(&serv->m_con_list_lock);
@@ -169,28 +169,42 @@ struct client_t *find_client_by_task_from_server(
 // добавление клиента к серверу
 int connect_client_to_server(struct server_t *server, struct client_t *client)
 {
-    INF("Connecting client '%d' to server '%d'", client->m_id, server->m_id);
+    INF("Connecting client (ID:%d)(PID:%d) to server (ID:%d)(PID:%d)",
+        client->m_id, client->m_task_p->pid, server->m_id, server->m_task_p->pid);
 
     // общая память
     struct shm_t *shm = NULL;
 
+    // ищем соединение между двумя процессами (server, client)
+    struct connection_t *con = find_connection(server->m_task_p, client->m_task_p);
+
     // проверяем уже существующие подключения между двумя процессами,
     // в которых работают server и client
-    struct client_t *client2 = find_client_by_task_from_server(client->m_task_p, server);
+    //    struct client_t *client2 = find_client_by_task_from_server(client->m_task_p, server);
 
     // если существует клиент из того же процесса, с которого пытается подключиться
     // еще один клиент, то просто даем еще одному клиенту ту же область памяти
-    if (client2)
+    // if (client2)
+    // {
+    //     INF("Shared memory btw client pid: %d and server pid: %d already exist",
+    //         client->m_task_p->pid, server->m_task_p->pid);
+    //     shm = client2->m_conn_p->m_mem_p;
+    // }
+
+    // если соединение найдено, значит уже существует общая память между процессами
+    // используем ее
+    if (con)
     {
+        shm = con->m_mem_p;
         INF("Shared memory btw client pid: %d and server pid: %d already exist",
             client->m_task_p->pid, server->m_task_p->pid);
-        shm = client2->m_conn_p->m_mem_p;
     }
-
     // если же нет общей памяти у сервера с процессом,
     // из которого к нему подключается клиент, то создаем ее
     else
     {
+        INF("There is no shared memeory btw client pid: %d and server pid: %d",
+            client->m_task_p->pid, server->m_task_p->pid);
         shm = shm_create(SHARED_MEM_SIZE);
 
         // проверка создания памяти
@@ -203,13 +217,13 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     }
 
     // создаем объект соединения
-    struct connection_t *con = create_connection(client, server, shm);
+    con = create_connection(client, server, shm);
 
     // проверка создания объекта соединения
     if (!con)
     {
         ERR("CONNECT_TO_SERVER: failed to create connection_t object");
-        return -ENOMEM;
+        goto delete_shm;
     }
 
     // подключение обратных ссылок
@@ -222,6 +236,11 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     INF("Cur num of clients conected to shm (ID:%d) = %d",
         con->m_mem_p->m_id, atomic_read(&con->m_mem_p->m_num_of_conn));
     return 0;
+
+delete_shm:
+    shm_destroy(shm);
+
+    return -ENOMEM;
 }
 
 // добавить подключение
@@ -233,15 +252,25 @@ void server_add_connection(struct server_t *srv, struct connection_t *con)
         ERR("there is no connection or server object");
         return;
     }
+    // создание объекта списка соединения
+    struct serv_conn_list_t *s_con = kmalloc(sizeof(*s_con), GFP_KERNEL);
+    if (!s_con)
+    {
+        ERR("Failed to allocate memory for serv_conn_list_t");
+        return;
+    }
+
+    s_con->conn = con;
+    INIT_LIST_HEAD(&s_con->list);
 
     // блокировка списка соединений сервера для добавления нового соединения
     mutex_lock(&srv->m_con_list_lock);
-    list_add(&con->list, &srv->connection_list);
+    list_add(&s_con->list, &srv->connection_list.list);
     mutex_unlock(&srv->m_con_list_lock);
 }
 
 // удалить подключение
-void server_delete_connection(struct server_t *srv, struct connection_t *con)
+void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con)
 {
     // проверка на существование подключения
     if (!con | !srv)
@@ -253,11 +282,12 @@ void server_delete_connection(struct server_t *srv, struct connection_t *con)
     // глобальная блокировка серверов для добавления в список соединений
     mutex_lock(&srv->m_con_list_lock);
     list_del(&con->list);
-    delete_connection(con);
+    delete_connection(con->conn);
+    kfree(con);
     mutex_unlock(&srv->m_con_list_lock);
 }
 
-struct connection_t *server_find_conn_by_id(struct server_t *srv, int shm_id)
+struct serv_conn_list_t *server_find_conn_by_id(struct server_t *srv, int shm_id)
 {
     // проверяем входные данные
     if (!IS_ID_VALID(shm_id))
@@ -267,13 +297,13 @@ struct connection_t *server_find_conn_by_id(struct server_t *srv, int shm_id)
     }
 
     // соединение с клиентом и памятью
-    struct connection_t *conn = NULL;
+    struct serv_conn_list_t *conn = NULL;
 
     mutex_lock(&srv->m_con_list_lock);
     // Итерируемся по списку подключений
-    list_for_each_entry(conn, &srv->connection_list, list)
+    list_for_each_entry(conn, &srv->connection_list.list, list)
     {
-        if (conn->m_mem_p && conn->m_mem_p->m_id == shm_id)
+        if (conn->conn->m_mem_p && conn->conn->m_mem_p->m_id == shm_id)
         {
             INF("shm id: %d", shm_id);
             // Нашли совпадение - сохраняем результат

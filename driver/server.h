@@ -12,15 +12,19 @@
 struct server_t
 {
     char m_name[MAX_SERVER_NAME];
-    int m_id;                         // id клиента в процессе
-    struct task_struct *m_task_p;     // указатель на задачу, где зарегистрирован сервер
-    struct list_head connection_list; // список установленных подключений
-    struct mutex m_con_list_lock;     // блокировка списка соединений
-    struct mutex m_lock;              // блокировка доступа к серверу
-    struct list_head list;            // список серверов
+    int m_id;                     // id клиента в процессе
+    struct task_struct *m_task_p; // указатель на задачу, где зарегистрирован сервер
+    struct serv_conn_list_t
+    {
+        struct connection_t *conn; // указатель на соединение
+        struct list_head list;
+    } connection_list;            // список установленных подключений
+    struct mutex m_con_list_lock; // блокировка списка соединений
+    struct mutex m_lock;          // блокировка доступа к серверу
+    struct list_head list;        // список серверов
 };
 
-// Список соединений и его блокировка
+// Список серверов и его блокировка
 extern struct list_head g_servers_list;
 extern struct mutex g_servers_lock;
 
@@ -54,10 +58,10 @@ int connect_client_to_server(struct server_t *srv, struct client_t *cli);
 void server_add_connection(struct server_t *srv, struct connection_t *con);
 
 // удаление соединения
-void server_delete_connection(struct server_t *srv, struct connection_t *con);
+void server_delete_connection(struct server_t *srv, struct serv_conn_list_t*con);
 
 // поиск соединения с необходимой памятью
-struct connection_t* server_find_conn_by_id(struct server_t* srv, int shm_id);
+struct serv_conn_list_t *server_find_conn_by_id(struct server_t *srv, int shm_id);
 
 /**
  * Операции над глобальным списком серверов
