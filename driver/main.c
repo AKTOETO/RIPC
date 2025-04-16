@@ -38,6 +38,10 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     int ret = 0;
     struct server_t *server = NULL;
     struct client_t *client = NULL;
+    struct connection_t *conn = NULL;
+    struct kernel_siginfo sig_info; // для отправки сигнала
+    int packed_id = -1;
+    int sig_ret  = -1;
     // struct client_t *client2 = NULL;
     // struct shm_t *shm = NULL;
 
@@ -144,6 +148,146 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         }
         break;
 
+    case IOCTL_CLIENT_END_WRITING:
+
+        // Получение id клиента из аргумента
+        int id = unpack_id1((u32)arg);
+
+        // поиск нужного клиента
+        client = find_client_by_id_pid(id, current->pid);
+
+        // если клиент не найден
+        if (!client)
+        {
+            ERR("There is no client with id %d", id);
+            return -ENODATA;
+        }
+
+        conn = client->m_conn_p;
+
+        // если есть клиент, но он не подключен
+        if (!conn)
+        {
+            ERR("There is no connection in client (ID:%d)", id);
+            return -ENOENT;
+        }
+
+        // получаем сервер
+        server = conn->m_server_p;
+
+        // Если нет указателя на сервер
+        if (!server)
+        {
+            ERR("Ivalid connection object: null server ptr (CLIENT ID:%d)", client->m_id);
+            return -ENOMEM;
+        }
+
+        // упаковываем (client id + sub mem id) для отправки
+        packed_id = pack_ids(id, conn->m_mem_p->m_id);
+
+        // если произошла ошибка упаковки
+        if (packed_id == (u32)-EINVAL)
+        {
+            ERR("Failed to pack ID for NEW_MESSAGE signal (CLIENT ID:%d)\n", id);
+            return -EINVAL;
+        }
+
+        // формируем данные для отправки сигнала
+        memset(&sig_info, 0, sizeof(struct kernel_siginfo));
+        sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
+        sig_info.si_code = SI_KERNEL;    // Указываем, что сигнал из ядра
+        // Помещаем упакованные данные в поле si_int.
+        sig_info.si_int = packed_id;
+
+        // чтобы сервер не удалился или не изменился, пока сигнал отправляю
+        mutex_lock(&server->m_lock);
+
+        INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
+            NEW_MESSAGE, server->m_task_p->pid, packed_id, client->m_id, conn->m_mem_p->m_id);
+        sig_ret = send_sig_info(NEW_MESSAGE, &sig_info, conn->m_server_p->m_task_p);
+
+        mutex_unlock(&server->m_lock);
+
+        // если возникла ошибка при отправке сигнала
+        if (sig_ret < 0)
+        {
+            ERR("Failed to send signal %d to server (PID:%d)(ID:%d): error %d\n",
+                NEW_MESSAGE, server->m_task_p->pid, server->m_id, sig_ret);
+        }
+        else
+            INF("Signal %d sent successfully to server (PID:%d)(ID:%d)\n",
+                NEW_MESSAGE, server->m_task_p->pid, server->m_id);
+
+        break;
+
+    case IOCTL_SERVER_END_WRITING:
+
+        // Получение id клиента из аргумента
+        int server_id;
+        int sub_mem_id;
+        UNPACK_SC_SHM((u32)arg, server_id, sub_mem_id);
+
+        // поиск нужного сервера
+        server = find_server_by_id_pid(server_id, current->pid);
+
+        // если сервер не найден
+        if (!server)
+        {
+            ERR("There is no server with id %d", id);
+            return -ENODATA;
+        }
+
+        // поиск нужного соединения
+        conn = server_find_conn_by_sub_mem_id(server, sub_mem_id)->conn;
+
+        // если нет соединения с этой памятью
+        if (!conn)
+        {
+            ERR("There is no connection btw server (ID:%d) and sub_mem (ID:%d)", server_id, sub_mem_id);
+            return -ENOENT;
+        }
+
+        // получаем клиент
+        client = conn->m_client_p;
+
+        // Если нет указателя на клиент
+        if (!client)
+        {
+            ERR("Ivalid connection object: null client ptr (SERVER ID:%d) (SUB MEM ID: %d)", server_id, sub_mem_id);
+            return -ENOMEM;
+        }
+        // упаковываем (server id) для отправки
+        packed_id = pack_ids(server_id, 0);
+
+        // если произошла ошибка упаковки
+        if (packed_id == (u32)-EINVAL)
+        {
+            ERR("Failed to pack ID for NEW_MESSAGE signal (SERVER ID:%d)\n", server_id);
+            return -EINVAL;
+        }
+        // формируем данные для отправки сигнала
+        memset(&sig_info, 0, sizeof(struct kernel_siginfo));
+        sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
+        sig_info.si_code = SI_KERNEL;    // Указываем, что сигнал из ядра
+        // Помещаем упакованные данные в поле si_int.
+        sig_info.si_int = packed_id;
+
+        // отправка сигнала
+        INF("Sending signal %d to client PID %d with data 0x%x (server=%d, shm=%d)\n",
+            NEW_MESSAGE, client->m_task_p->pid, packed_id, server_id, conn->m_mem_p->m_id);
+        sig_ret = send_sig_info(NEW_MESSAGE, &sig_info, client->m_task_p);
+
+        // если возникла ошибка при отправке сигнала
+        if (sig_ret < 0)
+        {
+            ERR("Failed to send signal %d to client (PID:%d) (ID:%d): error %d\n",
+                NEW_MESSAGE, client->m_task_p->pid, client->m_id, sig_ret);
+        }
+        else
+            INF("Signal %d sent successfully to client (PID:%d) (ID:%d)\n",
+                NEW_MESSAGE, client->m_task_p->pid, client->m_id);
+        break;
+
     default:
         INF("Unknown ioctl command: 0x%x", cmd);
         return -ENOTTY;
@@ -203,7 +347,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         conn = client->m_conn_p;
 
         // если соединения нет, то и соединять не с чем
-        if(!conn)
+        if (!conn)
         {
             ERR("There is no connection (CLIENT ID:%d)", client->m_id);
             return -EINVAL;
@@ -225,10 +369,9 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
 
         // Подготавливаем структуру kernel_siginfo
         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
-        sig_info.si_signo = NEW_CONNECTION; // Номер сигнала (ваш SIGUSR1)
+        sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
         sig_info.si_code = SI_KERNEL;       // Указываем, что сигнал из ядра
         // Помещаем упакованные данные в поле si_int.
-        // Сервер должен будет извлечь их из siginfo_t->si_int в своем обработчике.
         sig_info.si_int = (int)packed_cli_sub_id;
 
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
@@ -265,7 +408,6 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     // если current+id - это сервер
     if (server)
     {
-        
         // сохраняем соединение, в котором нужная нам память
         if (!list_empty(&server->connection_list.list))
         {
@@ -315,10 +457,10 @@ found:
     // Отображаем физическую память в пользовательское пространство
     ret = remap_pfn_range(vma,
                           vma->vm_start,
-                          page_to_pfn(sub->m_pages_p),// virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
+                          page_to_pfn(sub->m_pages_p), // virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
                           sub->m_size,
                           vma->vm_page_prot);
-                          
+
     if (ret)
     {
         ERR("remap_pfn_range failed: %d\n", ret);

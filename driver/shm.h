@@ -17,12 +17,10 @@
 struct shm_t
 {
     int m_id; // идентификатор области памяти
-    // void *m_mem_p;          // указатеь на область общей памяти
     short m_num_of_pages; // размер общей памяти
-    // atomic_t m_is_writing;  // флаг: пишет ли кто-то в память или нет
-    // atomic_t m_num_of_conn; // количество подключенных клиентов
     struct page *m_pages_p; // страницы памяти, выделенные под этот memory pool
     size_t m_size; // размер пула в байтах
+    
     // Массив подобластей памяти
     struct sub_mem_t
     {

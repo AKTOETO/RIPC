@@ -78,9 +78,9 @@ void client_add_connection(
 struct client_t *find_client_by_id(int id)
 {
     // проверка входных данных
-    if (id < 0)
+    if (!IS_ID_VALID(id))
     {
-        ERR("find_client_by_id: Incorrect id: %d", id);
+        ERR("Incorrect id: %d", id);
         return NULL;
     }
 
@@ -107,9 +107,9 @@ struct client_t *find_client_by_id(int id)
 struct client_t *find_client_by_id_pid(int id, pid_t pid)
 {
     // проверка входных данных
-    if (id < 0)
+    if (!IS_ID_VALID(id))
     {
-        ERR("find_client_by_id: Incorrect id: %d", id);
+        ERR("Incorrect id: %d", id);
         return NULL;
     }
 

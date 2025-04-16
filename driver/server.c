@@ -132,6 +132,7 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
         }
     }
     mutex_unlock(&g_servers_lock);
+    INF("Server not found with (ID:%d)(PID:%d)", id, pid);
 
     return NULL;
 }
@@ -253,6 +254,7 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
         ERR("Invalid input params");
         return NULL;
     }
+    INF("Finding connection in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)", srv->m_id, srv->m_name, sub_mem_id);
 
     // соединение с клиентом и памятью
     struct serv_conn_list_t *conn = NULL;
@@ -269,6 +271,7 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
         }
     }
     mutex_unlock(&srv->m_con_list_lock);
+    INF("Connection not found in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)", srv->m_id, srv->m_name, sub_mem_id);
     return NULL;
 }
 

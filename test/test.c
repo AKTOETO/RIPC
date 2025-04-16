@@ -34,6 +34,10 @@ void signal_handler(int sig, siginfo_t *info, void *ucontext)
         g_signal_shm_id = unpack_id2(packed_data);
         g_signal_received_flag = 1;
     }
+    else if(sig == NEW_MESSAGE && info->si_code == SI_KERNEL)
+    {
+        
+    }
 }
 
 bool setup_signal_handler()

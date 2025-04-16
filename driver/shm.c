@@ -174,6 +174,7 @@ void submem_clear(struct sub_mem_t *sub)
         ERR("There is not submem");
         return;
     }
+    INF("Deleting sub mem (ID: %d)(BYTE SIZE: %ld)", sub->m_id, sub->m_size);
 
     // удаление id
     free_id(&g_id_gen, sub->m_id);
