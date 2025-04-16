@@ -1,5 +1,4 @@
 #include "shm.h"
-#include "ripc.h"
 #include "err.h"
 
 #include <linux/mm.h>
@@ -13,14 +12,9 @@ DEFINE_MUTEX(g_shm_lock);
  */
 
 // создание области общей памяти
-struct shm_t *shm_create(size_t size)
+struct shm_t *shm_create()
 {
-    // проверка входных параметров
-    if (size == 0 || size > MAX_SHARED_MEM_SIZE)
-    {
-        ERR("Invalid shared memory size: %ld", size);
-        return NULL;
-    }
+    INF("Create sheared memory pool");
 
     // выделяем память под структуру
     struct shm_t *shm = kmalloc(sizeof(*shm), GFP_KERNEL);
@@ -30,31 +24,45 @@ struct shm_t *shm_create(size_t size)
         return NULL;
     }
 
-    // выделякм память под саму область
-    shm->m_mem_p = kmalloc(size, GFP_KERNEL);
-    if (!shm->m_mem_p)
+    // аллоцируем страницы памяти
+    shm->m_num_of_pages = SHM_POOL_PAGE_NUMBER;
+    shm->m_pages_p = alloc_pages(GFP_KERNEL | __GFP_ZERO, SHM_REGION_ORDER);
+
+    if (!shm->m_pages_p)
     {
-        ERR("Cant allocate shared memory area");
-        kfree(shm);
-        return NULL;
+        ERR("Cant allocate %d pages", shm->m_num_of_pages);
+        goto failed_page_alloc;
     }
 
-    // инициализация полей
+    // помечаем страницы невытесняемыми, чтобы ядро их не вытеснило
+    SetPageReserved(shm->m_pages_p);
+
+    // инициализация под областей
+    for (int i = 0; i < SHM_POOL_SIZE; i++)
+    {
+        submem_init(i, shm);
+    }
+
+    // генерация id
     shm->m_id = generate_id(&g_id_gen);
-    shm->m_size = size;
-    atomic_set(&shm->m_is_writing, 0);
-    atomic_set(&shm->m_num_of_conn, 0);
-    //shm->m_conn_p = NULL;
-    INIT_LIST_HEAD(&shm->list);
+
+    shm->m_size = SHM_POOL_BYTE_SIZE;
 
     // добавление в список общих паметей
+    INIT_LIST_HEAD(&shm->list);
     mutex_lock(&g_shm_lock);
     list_add(&shm->list, &g_shm_list);
     mutex_unlock(&g_shm_lock);
 
-    INF("Shared memory allocated (ID:%d) (%zu bytes)", shm->m_id, shm->m_size);
+    INF("Shared memory allocated (ID:%d)", shm->m_id);
 
     return shm;
+
+failed_page_alloc:
+    __free_pages(shm->m_pages_p, SHM_REGION_ORDER);
+
+    kfree(shm);
+    return NULL;
 }
 
 // удаление области общей памяти
@@ -72,52 +80,120 @@ void shm_destroy(struct shm_t *shm)
     // освобождение id
     free_id(&g_id_gen, shm->m_id);
 
-    mutex_lock(&g_shm_lock);
+    // очистка подобластей
+    for (int i = 0; i < SHM_POOL_SIZE; i++)
+        submem_clear(&shm->m_sub_mems[i]);
 
-    // освобождение память под общую область
-    if (shm->m_mem_p)
-        kfree(shm->m_mem_p);
+    // очистка страниц памяти
+    ClearPageReserved(shm->m_pages_p);
+    __free_pages(shm->m_pages_p, SHM_REGION_ORDER);
 
     // удаление памяти из общего списка
+    mutex_lock(&g_shm_lock);
     list_del(&shm->list);
+    mutex_unlock(&g_shm_lock);
 
     // освобождение памяти под структуру
     kfree(shm);
-
-    mutex_unlock(&g_shm_lock);
 }
 
-// начать запись в память
-int shm_start_write(struct shm_t *shm)
+struct sub_mem_t *shm_get_free_submem(struct shm_t *shm)
 {
-    // проверка входных данных
     if (!shm)
     {
-        ERR("shm_start_write: Attempt to write to NULL shared memory");
-        return -1;
+        ERR("There is not shm");
+        return NULL;
     }
 
-    // Пытаемся изменить 0 → 1 атомарно
-    if (atomic_cmpxchg(&shm->m_is_writing, 0, 1) == 0)
+    // поиск свободной области
+    for (int i = 0; i < SHM_POOL_SIZE; i++)
     {
-        return 0; // Успешно захватили флаг
+        if (!shm->m_sub_mems[i].m_conn_p)
+        {
+            INF("FOUND free sub mem (ID: %d)", shm->m_sub_mems[i].m_id);
+            return &shm->m_sub_mems[i];
+        }
     }
-    return -EBUSY; // Кто-то уже пишет
+    INF("free sub mem not found");
+
+    return NULL;
 }
-
-// закончить запись в память
-void shm_end_write(struct shm_t *shm)
+void submem_add_connection(
+    struct sub_mem_t *sub,
+    struct connection_t *con)
 {
-    // проверка входных данных
-    if (!shm)
+    if(!sub || !con)
     {
-        ERR("shm_end_write: Attempt to end writing to NULL shared memory");
+        ERR("There is no sub or con");
         return;
     }
 
-    // Гарантированно сбрасываем флаг
-    atomic_set(&shm->m_is_writing, 0);
+    sub->m_conn_p = con;
 }
+
+struct sub_mem_t *submem_init(int id, struct shm_t *shm)
+{
+    INF("Init submem");
+
+    if (!shm)
+    {
+        ERR("There is not shm");
+        return NULL;
+    }
+
+    if (!IS_ID_VALID(id) || id > SHM_POOL_SIZE)
+    {
+        ERR("Incorrect (ID: %d) (POOL SIZE:%d)", id, SHM_POOL_SIZE);
+        return NULL;
+    }
+
+    struct sub_mem_t *sub = &shm->m_sub_mems[id];
+
+    // установка родительской области памяти
+    sub->m_shm = shm;
+
+    // получение id
+    sub->m_id = generate_id(&g_id_gen);
+
+    // количество байт на подобласть
+    sub->m_size = SHM_REGION_PAGE_SIZE;
+
+    // нет текущего подключения
+    sub->m_conn_p = NULL;
+
+    // получение страниц памяти для этой подпамяти
+    sub->m_pages_p = shm->m_pages_p + id * SHM_REGION_PAGE_NUMBER;
+
+    return sub;
+}
+
+void submem_clear(struct sub_mem_t *sub)
+{
+    if (!sub)
+    {
+        ERR("There is not submem");
+        return;
+    }
+
+    // удаление id
+    free_id(&g_id_gen, sub->m_id);
+}
+
+void submem_return(struct sub_mem_t *sub)
+{
+    if (!sub)
+    {
+        ERR("There is not submem");
+        return;
+    }
+
+    // отключение от соединения
+    sub->m_conn_p = NULL;
+}
+
+/**
+ * Глобальный список
+ */
 
 // удаление списка
 void delete_shm_list(void)
@@ -125,4 +201,30 @@ void delete_shm_list(void)
     struct shm_t *shm, *tmp;
     list_for_each_entry_safe(shm, tmp, &g_shm_list, list)
         shm_destroy(shm);
+}
+
+struct sub_mem_t *get_free_submem(void)
+{
+    INF("Getting free submem");
+    struct shm_t *shm = NULL;
+    struct sub_mem_t *sub = NULL;
+
+    // проходимся по всему списку и ищем свободную память
+    list_for_each_entry(shm, &g_shm_list, list)
+    {
+        sub = shm_get_free_submem(shm);
+        if (sub)
+        {
+            INF("FOUND free submem (ID: %d)", sub->m_id);
+            return sub;
+        }
+    }
+
+    // если нет свободных подобластей, создаем новую область с подобластями
+    INF("There is no free submem");
+    shm = shm_create();
+
+    // получаем свободную подобласть из нее и возвращаем
+    sub = shm_get_free_submem(shm);
+    return NULL;
 }

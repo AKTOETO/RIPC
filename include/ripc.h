@@ -11,15 +11,25 @@
 #define DEVICE_NAME "ripc"                  // Имя устройства в /dev
 #define CLASS_NAME "ripc"                   // имя класса устройств
 #define MAX_SERVER_NAME 64                  // Максимальная длина имени сервера
-#define SHARED_MEM_SIZE PAGE_SIZE           // Размер общей памяти (1 страница)
-#define MAX_SHARED_MEM_SIZE SHARED_MEM_SIZE // Максимально возможный размер общей памяти
 #define DEVICE_PATH "/dev/" DEVICE_NAME
+
+/**
+ * Константы для работы с памятью
+ */
+
+#define SHM_REGION_ORDER 0                                            // Порядок для alloc_pages (2^0 = 1 страница)
+#define SHM_REGION_PAGE_NUMBER (1 << SHM_REGION_ORDER)                // Количество страниц в области (1)
+#define SHM_REGION_PAGE_SIZE (SHM_REGION_PAGE_NUMBER * PAGE_SIZE)     // Размер памяти на область в байтах
+#define SHM_POOL_SIZE 4                                               // Количество областей в пуле
+#define SHM_POOL_PAGE_NUMBER (SHM_POOL_SIZE * SHM_REGION_PAGE_NUMBER) // Количество страниц памяти на пул
+#define SHM_POOL_BYTE_SIZE (SHM_REGION_PAGE_SIZE * SHM_POOL_SIZE)     // Размер пула памяти в байтах
+// #define SHARED_MEM_SIZE PAGE_SIZE           // Размер общей памяти (1 страница)
 
 /**
  * SIGNALS
  */
 
- #define NEW_CONNECTION SIGUSR1
+#define NEW_CONNECTION SIGUSR1
 
 /**
  * IOCTL data for commands

@@ -7,20 +7,33 @@
 #include <linux/mutex.h>
 
 #include "id.h"
+#include "ripc.h"
 
 /**
  * Описание структуры общей памяти и функций работы с ней
  */
 
-// Общая память
+// Область общих памятей
 struct shm_t
 {
-    int m_id;               // идентификатор области памяти
-    void *m_mem_p;          // указатеь на область общей памяти
-    size_t m_size;          // размер общей памяти
-    atomic_t m_is_writing;  // флаг: пишет ли кто-то в память или нет
-    atomic_t m_num_of_conn; // количество подключенных клиентов
-    struct list_head list;  // список областей памяти
+    int m_id; // идентификатор области памяти
+    // void *m_mem_p;          // указатеь на область общей памяти
+    short m_num_of_pages; // размер общей памяти
+    // atomic_t m_is_writing;  // флаг: пишет ли кто-то в память или нет
+    // atomic_t m_num_of_conn; // количество подключенных клиентов
+    struct page *m_pages_p; // страницы памяти, выделенные под этот memory pool
+    size_t m_size; // размер пула в байтах
+    // Массив подобластей памяти
+    struct sub_mem_t
+    {
+        int m_id;
+        struct shm_t *m_shm;           // родительская область памяти
+        struct page *m_pages_p;        // страницы памяти, относящиеся к этой области
+        size_t m_size;                 // размер памяти в байтах
+        struct connection_t *m_conn_p; // соединение между клиентом и сервером
+    } m_sub_mems[SHM_POOL_SIZE];
+
+    struct list_head list; // список областей памяти
 };
 
 // Список соединений и его блокировка
@@ -28,20 +41,33 @@ extern struct list_head g_shm_list;
 extern struct mutex g_shm_lock;
 
 /**
- * Операции над объектом соединения
+ * Операции над областью общих памятей
  */
 
 // создание области общей памяти
-struct shm_t *shm_create(size_t size);
+struct shm_t *shm_create(void);
 
 // удаление области общей памяти
 void shm_destroy(struct shm_t *shm);
 
-// начать запись в память
-int shm_start_write(struct shm_t *shm);
+// получить свободную область
+struct sub_mem_t *shm_get_free_submem(struct shm_t *shm);
 
-// закончить запись в память
-void shm_end_write(struct shm_t *shm);
+/**
+ * Операции над подобластью
+ */
+
+// подключение подобласти
+void submem_add_connection(struct sub_mem_t* sub, struct connection_t* con);
+
+// инициализация подобласти
+struct sub_mem_t *submem_init(int id, struct shm_t *shm);
+
+// очистка подобласти
+void submem_clear(struct sub_mem_t *);
+
+// отсоединить область
+void submem_return(struct sub_mem_t *sub);
 
 /**
  * Операции над глобальным списком
@@ -49,5 +75,8 @@ void shm_end_write(struct shm_t *shm);
 
 // удаление списка
 void delete_shm_list(void);
+
+// получение свободной подобласти памяти
+struct sub_mem_t *get_free_submem(void);
 
 #endif // !SHM_H

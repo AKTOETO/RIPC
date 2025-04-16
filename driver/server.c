@@ -172,73 +172,30 @@ int connect_client_to_server(struct server_t *server, struct client_t *client)
     INF("Connecting client (ID:%d)(PID:%d) to server (ID:%d)(PID:%d)",
         client->m_id, client->m_task_p->pid, server->m_id, server->m_task_p->pid);
 
-    // общая память
-    struct shm_t *shm = NULL;
 
-    // ищем соединение между двумя процессами (server, client)
-    struct connection_t *con = find_connection(server->m_task_p, client->m_task_p);
-
-    // проверяем уже существующие подключения между двумя процессами,
-    // в которых работают server и client
-    //    struct client_t *client2 = find_client_by_task_from_server(client->m_task_p, server);
-
-    // если существует клиент из того же процесса, с которого пытается подключиться
-    // еще один клиент, то просто даем еще одному клиенту ту же область памяти
-    // if (client2)
-    // {
-    //     INF("Shared memory btw client pid: %d and server pid: %d already exist",
-    //         client->m_task_p->pid, server->m_task_p->pid);
-    //     shm = client2->m_conn_p->m_mem_p;
-    // }
-
-    // если соединение найдено, значит уже существует общая память между процессами
-    // используем ее
-    if (con)
-    {
-        shm = con->m_mem_p;
-        INF("Shared memory btw client pid: %d and server pid: %d already exist",
-            client->m_task_p->pid, server->m_task_p->pid);
-    }
-    // если же нет общей памяти у сервера с процессом,
-    // из которого к нему подключается клиент, то создаем ее
-    else
-    {
-        INF("There is no shared memeory btw client pid: %d and server pid: %d",
-            client->m_task_p->pid, server->m_task_p->pid);
-        shm = shm_create(SHARED_MEM_SIZE);
-
-        // проверка создания памяти
-        if (!shm)
-        {
-            ERR("CONNECT_TO_SERVER: cant create shared memory for client %d and server %s",
-                client->m_id, server->m_name);
-            return -ENOMEM;
-        }
-    }
+    // ищем свободную подобласть памяти
+    struct sub_mem_t *sub = get_free_submem();
 
     // создаем объект соединения
-    con = create_connection(client, server, shm);
+    struct connection_t *con = create_connection(client, server, sub);
 
     // проверка создания объекта соединения
     if (!con)
     {
         ERR("CONNECT_TO_SERVER: failed to create connection_t object");
-        goto delete_shm;
+        goto falied_create_con;
     }
 
     // подключение обратных ссылок
-    client->m_conn_p = con;
+    // client->m_conn_p = con;
+    client_add_connection(client, con);
+    submem_add_connection(sub, con);
     server_add_connection(server, con);
-    // увеличиваем счетчик подключенных клиентов к памяти
-    atomic_inc(&shm->m_num_of_conn);
 
     INF("Client %d connected to server '%s'", client->m_id, server->m_name);
-    INF("Cur num of clients conected to shm (ID:%d) = %d",
-        con->m_mem_p->m_id, atomic_read(&con->m_mem_p->m_num_of_conn));
     return 0;
 
-delete_shm:
-    shm_destroy(shm);
+falied_create_con:
 
     return -ENOMEM;
 }
@@ -287,10 +244,11 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
     mutex_unlock(&srv->m_con_list_lock);
 }
 
-struct serv_conn_list_t *server_find_conn_by_id(struct server_t *srv, int shm_id)
+struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
+    struct server_t *srv, int sub_mem_id)
 {
     // проверяем входные данные
-    if (!IS_ID_VALID(shm_id))
+    if (!IS_ID_VALID(sub_mem_id))
     {
         ERR("Invalid input params");
         return NULL;
@@ -303,9 +261,8 @@ struct serv_conn_list_t *server_find_conn_by_id(struct server_t *srv, int shm_id
     // Итерируемся по списку подключений
     list_for_each_entry(conn, &srv->connection_list.list, list)
     {
-        if (conn->conn->m_mem_p && conn->conn->m_mem_p->m_id == shm_id)
+        if (conn->conn->m_mem_p && conn->conn->m_mem_p->m_id == sub_mem_id)
         {
-            INF("shm id: %d", shm_id);
             // Нашли совпадение - сохраняем результат
             mutex_unlock(&srv->m_con_list_lock);
             return conn;

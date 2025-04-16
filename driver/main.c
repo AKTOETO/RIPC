@@ -165,9 +165,9 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     u32 packed_id = (u32)vma->vm_pgoff;
     struct client_t *client = NULL;
     struct server_t *server = NULL;
-    struct shm_t *shm = NULL;
+    struct sub_mem_t *sub = NULL;
     struct connection_t *conn = NULL;
-    u32 packed_cli_shm_id = 0;
+    u32 packed_cli_sub_id = 0;
     struct kernel_siginfo sig_info; // для отправки сигнала
 
     // TODO: пока еще нет ограничений на id, в будущем переделать
@@ -183,10 +183,10 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         return -EINVAL;
     }
     int target_id = unpack_id1(packed_id); // id клиента либо сервера
-    int shm_id = unpack_id2(packed_id);    // id памяти (не всегда передается)
+    int sub_id = unpack_id2(packed_id);    // id памяти (не всегда передается)
 
-    INF("packed_id=0x%x (from vma->vm_pgoff), target_id=%d, shm_id=%d",
-        packed_id, target_id, shm_id);
+    INF("packed_id=0x%x (from vma->vm_pgoff), target_id=%d, sub_mem_id=%d",
+        packed_id, target_id, sub_id);
 
     /**
      * Нужно найти зарегистрированного клиента или сервера,
@@ -202,15 +202,18 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         // сохраняем соединение, в котором нужная нам память
         conn = client->m_conn_p;
 
-        // TODO: отправляем сигнал на сервер, что нужно отобразить память
-        // TODO: передать надо client_id + shm_id
-        // conn->m_server_p->m_task_p
+        // если соединения нет, то и соединять не с чем
+        if(!conn)
+        {
+            ERR("There is no connection (CLIENT ID:%d)", client->m_id);
+            return -EINVAL;
+        }
 
         // запакованные client_id + shm_id
-        packed_cli_shm_id = PACK_SC_SHM(client->m_id, conn->m_mem_p->m_id);
+        packed_cli_sub_id = PACK_SC_SHM(client->m_id, conn->m_mem_p->m_id);
 
         // если произошла ошибка упаковки
-        if (packed_cli_shm_id == (u32)-EINVAL)
+        if (packed_cli_sub_id == (u32)-EINVAL)
         {
             // Ошибка упаковки (например, ID вышли за диапазон) - маловероятно, если ID генерируются правильно
             ERR("Failed to pack IDs for signal (client_id=%d, shm_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
@@ -218,7 +221,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
             goto found;
         }
 
-        INF("Data packed: (client_id=%d, shm_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
+        INF("Data packed: (client_id=%d, sub_mem_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
 
         // Подготавливаем структуру kernel_siginfo
         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
@@ -226,13 +229,13 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         sig_info.si_code = SI_KERNEL;       // Указываем, что сигнал из ядра
         // Помещаем упакованные данные в поле si_int.
         // Сервер должен будет извлечь их из siginfo_t->si_int в своем обработчике.
-        sig_info.si_int = (int)packed_cli_shm_id;
+        sig_info.si_int = (int)packed_cli_sub_id;
 
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
         mutex_lock(&conn->m_server_p->m_lock);
 
         INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
-            NEW_CONNECTION, conn->m_server_p->m_task_p->pid, packed_cli_shm_id, client->m_id, conn->m_mem_p->m_id);
+            NEW_CONNECTION, conn->m_server_p->m_task_p->pid, packed_cli_sub_id, client->m_id, conn->m_mem_p->m_id);
         int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
 
         // устанавливаем флаг в значение: память отображена на сервере
@@ -267,16 +270,16 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         if (!list_empty(&server->connection_list.list))
         {
             // нужно знать shm_id для поиска памяти
-            if (shm_id != 0)
+            if (sub_id != 0)
             {
                 // ищем нужную память
-                conn = server_find_conn_by_id(server, shm_id)->conn;
+                conn = server_find_conn_by_sub_mem_id(server, sub_id)->conn;
             }
             else
             {
                 // Cервер не должен вызывать mmap с shm_id=0, потому что общая память
                 // не может создаться до создания клиента или сервера, которые заберут начальные id.
-                ERR("Server %d (pid %d) called mmap with shm_id=0.", target_id, current->pid);
+                ERR("Server %d (pid %d) called mmap with sub_mem_id=0.", target_id, current->pid);
                 return -EINVAL;
             }
         }
@@ -299,7 +302,7 @@ found:
         ERR("Connection or shared memory is NULL\n");
         return -EFAULT;
     }
-    shm = conn->m_mem_p;
+    sub = conn->m_mem_p;
 
     // TODO: добавить проверку прав доступа мб
     // // Проверяем права доступа (процесс должен быть владельцем)
@@ -312,22 +315,17 @@ found:
     // Отображаем физическую память в пользовательское пространство
     ret = remap_pfn_range(vma,
                           vma->vm_start,
-                          virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
-                          shm->m_size,
+                          page_to_pfn(sub->m_pages_p),// virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
+                          sub->m_size,
                           vma->vm_page_prot);
+                          
     if (ret)
     {
         ERR("remap_pfn_range failed: %d\n", ret);
         return ret;
     }
 
-    // Увеличиваем счетчик подключений клиентов к памяти
-    if (client)
-    {
-        atomic_inc(&shm->m_num_of_conn);
-    }
-
-    INF("PID %d mapped shm %p (size: %zu)\n", current->pid, shm, shm->m_size);
+    INF("PID %d mapped shm %p (size: %zu)\n", current->pid, sub, sub->m_size);
 
     // return remap_pfn_range(vma, vma->vm_start, virt_to_phys(shared_buffer) >> PAGE_SHIFT,
     //                        vma->vm_end - vma->vm_start, vma->vm_page_prot);
@@ -376,7 +374,7 @@ static int __init ipc_init(void)
     // присваиваем обработчик прав
     g_dev_class->devnode = &devnode;
 
-    // Создание устройства /dev/ripc_ipc c правами (rw-rw-rw-)
+    // Создание устройства /dev/ripc c правами (rw-rw-rw-)
     if (!device_create(g_dev_class, NULL, g_dev_num, NULL, DEVICE_NAME))
     {
         ERR("Failed to create device");

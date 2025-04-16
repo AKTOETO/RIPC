@@ -10,3 +10,5 @@ CMakeUserPresets.json
 *.symvers
 *.order
 *.tmp*
+c.bash
+out.txt

@@ -11,7 +11,7 @@ DEFINE_MUTEX(g_conns_lock);
 struct connection_t *create_connection(
     struct client_t *client,
     struct server_t *server,
-    struct shm_t *mem)
+    struct sub_mem_t *mem)
 {
     struct connection_t *con = kmalloc(sizeof(*con), GFP_KERNEL);
 

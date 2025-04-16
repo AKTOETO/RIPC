@@ -33,6 +33,9 @@ struct client_t *client_create(void);
 // удаление клиента
 void client_destroy(struct client_t *cli);
 
+// подключение клиента к соединению
+void client_add_connection(struct client_t* cli, struct connection_t* con);
+
 // поиск клиента по id
 struct client_t *find_client_by_id(int id);
 

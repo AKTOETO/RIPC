@@ -17,7 +17,7 @@ struct connection_t
 {
     struct client_t *m_client_p;
     struct server_t *m_server_p;
-    struct shm_t *m_mem_p;
+    struct sub_mem_t *m_mem_p;
     atomic_t m_serv_mmaped; // отображена ли общая память на сервер
     struct list_head list;
 };
@@ -34,7 +34,7 @@ extern struct mutex g_conns_lock;
 struct connection_t *create_connection(
     struct client_t *client,
     struct server_t *server,
-    struct shm_t *mem);
+    struct sub_mem_t *mem);
 
 // поиск соединения между двумя процессами
 struct connection_t *find_connection(

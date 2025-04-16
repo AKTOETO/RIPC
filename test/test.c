@@ -289,7 +289,7 @@ bool server_mmap(int index, int shm_id)
     printf("Server %d: Attempting mmap for shm_id %d with offset 0x%lx (packed 0x%x)\n",
            server->server_id, shm_id, (unsigned long)offset_for_mmap, packed_id);
 
-    server->mappings[map_index].addr = mmap(NULL, SHARED_MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, g_dev_fd, offset_for_mmap);
+    server->mappings[map_index].addr = mmap(NULL, SHM_REGION_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, g_dev_fd, offset_for_mmap);
 
     if (server->mappings[map_index].addr == MAP_FAILED)
     {
@@ -300,7 +300,7 @@ bool server_mmap(int index, int shm_id)
     }
     else
     {
-        server->mappings[map_index].size = SHARED_MEM_SIZE;
+        server->mappings[map_index].size = SHM_REGION_PAGE_SIZE;
         server->mappings[map_index].mapped = true;
         printf("Server %d: Memory for shm_id %d mapped at: %p\n", server->server_id, shm_id, server->mappings[map_index].addr);
         return true;
@@ -565,7 +565,7 @@ bool client_mmap(int index)
     printf("Client %d (instance %d): Attempting mmap with offset 0x%lx (packed 0x%x)\n",
            client->client_id, index, (unsigned long)offset_for_mmap, packed_id);
 
-    client->shm.addr = mmap(NULL, SHARED_MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, g_dev_fd, offset_for_mmap);
+    client->shm.addr = mmap(NULL, SHM_REGION_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, g_dev_fd, offset_for_mmap);
 
     if (client->shm.addr == MAP_FAILED)
     {
@@ -576,7 +576,7 @@ bool client_mmap(int index)
     }
     else
     {
-        client->shm.size = SHARED_MEM_SIZE;
+        client->shm.size = SHM_REGION_PAGE_SIZE;
         client->shm.mapped = true;
         printf("Client instance %d memory mapped at: %p\n", index, client->shm.addr);
         return true;

@@ -55,6 +55,25 @@ void client_destroy(struct client_t *cli)
     kfree(cli);
 }
 
+void client_add_connection(
+    struct client_t *cli,
+    struct connection_t *con)
+{
+    if(!cli || !con)
+    {
+        ERR("There is no cli or con");
+        return;
+    }
+
+    if(cli->m_conn_p)
+    {
+        ERR("There is connection in client");
+        return;
+    }
+
+    cli->m_conn_p = con;
+}
+
 // поиск клиента по id
 struct client_t *find_client_by_id(int id)
 {

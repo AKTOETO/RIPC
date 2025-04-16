@@ -58,10 +58,11 @@ int connect_client_to_server(struct server_t *srv, struct client_t *cli);
 void server_add_connection(struct server_t *srv, struct connection_t *con);
 
 // удаление соединения
-void server_delete_connection(struct server_t *srv, struct serv_conn_list_t*con);
+void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con);
 
 // поиск соединения с необходимой памятью
-struct serv_conn_list_t *server_find_conn_by_id(struct server_t *srv, int shm_id);
+struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
+    struct server_t *srv, int sub_mem_id);
 
 /**
  * Операции над глобальным списком серверов
