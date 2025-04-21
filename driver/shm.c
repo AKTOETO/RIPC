@@ -227,5 +227,5 @@ struct sub_mem_t *get_free_submem(void)
 
     // получаем свободную подобласть из нее и возвращаем
     sub = shm_get_free_submem(shm);
-    return NULL;
+    return sub;
 }
