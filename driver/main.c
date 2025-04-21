@@ -6,7 +6,7 @@
 #include <linux/sched/signal.h> // Для send_sig_info, struct kernel_siginfo
 #include <linux/list.h>
 #include <linux/string.h>
-#include <linux/signal.h> // Для определения сигналов (SIGUSR1) и SI_KERNEL
+#include <linux/signal.h> // Для определения сигналов (SIGUSR1) и SI_QUEUE
 #include <linux/mutex.h>
 #include <linux/errno.h>
 #include <linux/atomic.h>    // атомарные операции
@@ -20,6 +20,7 @@
 #include "client.h"
 #include "server.h"
 #include "shm.h"
+#include "sigs.h"
 
 // Переменные для регистрации устройства
 static int g_major = 0;           // номер устройства (major)
@@ -41,7 +42,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     struct connection_t *conn = NULL;
     struct kernel_siginfo sig_info; // для отправки сигнала
     int packed_id = -1;
-    int sig_ret  = -1;
+    int sig_ret = -1;
     // struct client_t *client2 = NULL;
     // struct shm_t *shm = NULL;
 
@@ -195,13 +196,20 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // формируем данные для отправки сигнала
         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
         sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
-        sig_info.si_code = SI_KERNEL;    // Указываем, что сигнал из ядра
-        // Помещаем упакованные данные в поле si_int.
+        sig_info.si_code = SI_QUEUE;     // Указываем, что сигнал из ядра
+        sig_info.si_errno = conn->m_server_p->m_id;
         sig_info.si_int = packed_id;
 
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
         mutex_lock(&server->m_lock);
 
+        // проверка существования task struct
+        if (!server->m_task_p || !pid_alive(server->m_task_p))
+        {
+            ERR("Server task is NULL or server process doesnt exist");
+            mutex_unlock(&server->m_lock);
+            return -EINVAL;
+        }
         INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
             NEW_MESSAGE, server->m_task_p->pid, packed_id, client->m_id, conn->m_mem_p->m_id);
         sig_ret = send_sig_info(NEW_MESSAGE, &sig_info, conn->m_server_p->m_task_p);
@@ -268,7 +276,7 @@ static long ipc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         // формируем данные для отправки сигнала
         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
         sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
-        sig_info.si_code = SI_KERNEL;    // Указываем, что сигнал из ядра
+        sig_info.si_code = SI_QUEUE;     // Указываем, что сигнал из ядра
         // Помещаем упакованные данные в поле si_int.
         sig_info.si_int = packed_id;
 
@@ -368,18 +376,37 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         INF("Data packed: (client_id=%d, sub_mem_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
 
         // Подготавливаем структуру kernel_siginfo
-        memset(&sig_info, 0, sizeof(struct kernel_siginfo));
-        sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
-        sig_info.si_code = SI_KERNEL;       // Указываем, что сигнал из ядра
+         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
+         sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
+         sig_info.si_code = SI_QUEUE;        // Указываем, что сигнал из ядра
         // Помещаем упакованные данные в поле si_int.
-        sig_info.si_int = (int)packed_cli_sub_id;
+         sig_info.si_int = (int)packed_cli_sub_id;
+         sig_info.si_errno = (int)conn->m_server_p->m_id;
 
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
         mutex_lock(&conn->m_server_p->m_lock);
 
+        if (!pid_alive(conn->m_server_p->m_task_p))
+        {
+            ERR("Server (ID:%d)(NAME:%s)(PID:%d) is dead",
+                conn->m_server_p->m_id, conn->m_server_p->m_name,
+                conn->m_server_p->m_task_p->pid);
+            return -EEXIST;
+        }
+        else
+        {
+            INF("Server (ID:%d)(NAME:%s)(PID:%d) alive",
+                conn->m_server_p->m_id, conn->m_server_p->m_name,
+                conn->m_server_p->m_task_p->pid);
+        }
+
         INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
             NEW_CONNECTION, conn->m_server_p->m_task_p->pid, packed_cli_sub_id, client->m_id, conn->m_mem_p->m_id);
         int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
+
+        //ret = send_signal_to_process(
+        //    conn->m_server_p->m_task_p->pid, NEW_CONNECTION,
+        //    (int)packed_cli_sub_id, (int)conn->m_server_p->m_id);
 
         // устанавливаем флаг в значение: память отображена на сервере
         atomic_set(&conn->m_serv_mmaped, 1);

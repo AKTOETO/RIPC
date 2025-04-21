@@ -1,9 +1,246 @@
 #include "test.h"
 #include <ctype.h> // isspace()
+#include <poll.h>  // pollfd
+#include <pthread.h>
+
+// маска для обработки конкретных сигналов
+sigset_t g_mask;
+// поток-слушатель
+pthread_t g_listener_tid = 0;
+
+// --- Функции-Обработчики для Конкретных Сигналов ---
+void handle_new_connection(const struct signalfd_siginfo *fdsi)
+{
+    u32 packed_id = fdsi->ssi_int;    // Предполагаем: data1 = client_id
+    pid_t sender_pid = fdsi->ssi_pid; // PID клиента (или кто инициировал)
+
+    int client_id = unpack_id1(packed_id);
+    int submem_id = unpack_id2(packed_id);
+    int server_id = fdsi->ssi_errno;
+
+    // проверка id сервера
+    if (!IS_ID_VALID(server_id))
+    {
+        printf("Error: Server (ID:%d) is not valid\n", server_id);
+        return;
+    }
+
+    printf("\n--- [Handler NEW_CONNECTION in Thread %lu] ---\n", (unsigned long)pthread_self());
+    printf("  Received from PID: %d\n", sender_pid);
+    printf("  Client ID:         %d\n", client_id);
+    printf("  Server ID:         %d\n", server_id);
+    printf("  Submem ID:         %d\n", submem_id);
+    printf("--------------------------------------------\n");
+    printf("> ");
+    fflush(stdout);
+
+    // ищем сервер
+    struct ServerInstance *srv = find_server_by_driver_id(server_id);
+    if (!srv)
+        return;
+
+    // создаем новое соединение
+    server_add_connection(srv, client_id, submem_id);
+}
+
+void handle_new_message(const struct signalfd_siginfo *fdsi)
+{
+    u32 packed_id = (u32)fdsi->ssi_int; // Предполагаем: data1 = packed_id
+    pid_t sender_pid = fdsi->ssi_pid;
+
+    printf("\n--- [Handler NEW_MESSAGE in Thread %lu] ---\n", (unsigned long)pthread_self());
+    printf("  Received from PID: %d\n", sender_pid);
+    printf("  Packed ID:         %d\n", packed_id);
+    printf("--------------------------------------------\n");
+    printf("> ");
+    fflush(stdout);
+
+    // получение id
+    int serv_cli_id = unpack_id1(packed_id);
+    int sub_mem_id = unpack_id2(packed_id);
+
+    // если это сервер
+    if (sub_mem_id != 0)
+    {
+        // поиск сервера
+        struct ServerInstance *srv = find_server_by_driver_id(serv_cli_id);
+        if (!srv)
+        {
+            printf("Error: cant find server (ID:%d)\n", serv_cli_id);
+            return;
+        }
+
+        struct ServerShmMapping *submem = server_find_submem_by_id(srv, sub_mem_id);
+        if (!submem)
+        {
+            printf("Error: No submem (ID:%d) in server (ID:%d)\n", sub_mem_id, serv_cli_id);
+            return;
+        }
+        // получение сообщения для сервера
+        if (!server_read(srv, submem, 0, SHM_REGION_PAGE_SIZE))
+        {
+            printf("Error: cant read from server (ID:%d) and submem(ID:%d)\n", serv_cli_id, sub_mem_id);
+            return;
+        }
+        printf("Msg red in server (ID:%d)\n", serv_cli_id);
+    }
+    // это клиент
+    else
+    {
+        // поиск клиента
+        struct ClientInstance *cli = find_client_instance(serv_cli_id);
+        if (!cli)
+        {
+            printf("Error: cant find client (ID:%d)\n", serv_cli_id);
+            return;
+        }
+
+        if (!client_read(cli, 0, SHM_REGION_PAGE_SIZE))
+        {
+            printf("Error: cant read from client (ID:%d)\n", serv_cli_id);
+            return;
+        }
+        printf("Msg red in client (ID:%d)\n", serv_cli_id);
+    }
+}
+
+// Функция поиска и вызова обработчика
+void dispatch_signal(const struct signalfd_siginfo *fdsi)
+{
+    printf("\n[Dispatcher] Info: Looking for signal handler %d\n", fdsi->ssi_signo);
+    for (int i = 0; g_signal_dispatch_table[i].handler != NULL; ++i)
+    {
+        if (g_signal_dispatch_table[i].signo == (int)fdsi->ssi_signo)
+        {
+            // Нашли обработчик, вызываем его
+            g_signal_dispatch_table[i].handler(fdsi);
+            return; // Обработали, выходим
+        }
+    }
+    // Если обработчик не найден
+    printf("\n[Dispatcher] Warning: No handler found for signal %d\n", fdsi->ssi_signo);
+    printf("> ");
+    fflush(stdout);
+}
+
+// --- Поток для Ожидания и Обработки Сигналов ---
+void *signal_listener_thread(void *arg)
+{
+    (void)arg;
+    printf("[Signal Listener]: Thread %lu started.\n", (unsigned long)pthread_self());
+    printf("[Signal Listener]: signalfd: %d\n", g_signalfd);
+    struct pollfd pfd;
+    pfd.fd = g_signalfd;
+    pfd.events = POLLIN; // Ждем только событие чтения
+    pfd.revents = 0;
+
+    while (g_running)
+    {
+        // Ожидаем событие на signalfd с таймаутом 1 секунда
+        int ret = poll(&pfd, 1, 1000); // Таймаут для проверки g_running
+
+        // printf("[Signal Listener] poll returned: %d, revents: 0x%x (errno: %d)\n",
+        //     ret, pfd.revents, (ret == -1) ? errno : 0);
+
+        if (!g_running)
+        {
+            printf("[Signal Listener]: Stoping thread\n");
+            break; // Выходим, если основной поток попросил остановиться
+        }
+
+        if (ret == -1)
+        {
+            // Ошибка в poll (кроме EINTR)
+            if (errno == EINTR)
+            {
+                continue; // Прервано, просто повторяем poll
+            }
+            perror("[Signal Listener] poll failed");
+            g_running = false; // Ошибка, сигналим main для выхода
+            break;
+        }
+        else if (ret > 0)
+        {
+            printf("[Signal listener] Got a new signal\n");
+
+            // Событие произошло (ret == 1 в нашем случае)
+            if (pfd.revents & POLLIN)
+            {
+                printf("[Signal listener] Got a new IN signal\n");
+
+                // Дескриптор готов к чтению
+                struct signalfd_siginfo fdsi;
+                ssize_t s = read(g_signalfd, &fdsi, sizeof(fdsi));
+
+                // проверка на чтение всей структуры сигнала
+                if (s == sizeof(fdsi))
+                {
+                    // УСПЕХ: Прочитали ровно одну структуру siginfo
+                    // Теперь можно безопасно использовать данные в fdsi
+                    dispatch_signal(&fdsi); // Вызываем диспетчер
+                }
+                else
+                {
+                    // ОШИБКА или НЕОЖИДАННОЕ ПОВЕДЕНИЕ при чтении
+                    if (s == -1)
+                    {
+                        // Реальная ошибка чтения (EAGAIN не должно быть после poll,
+                        // но проверяем на всякий случай)
+                        if (errno != EAGAIN)
+                        {
+                            perror("[Signal Listener] read signalfd failed");
+                            // Возможно, стоит выйти при серьезной ошибке чтения
+                            // g_running = false;
+                            // break;
+                        }
+                        // Если EAGAIN, то это странно после poll, но можно проигнорировать
+                    }
+                    else if (s >= 0)
+                    {
+                        // Прочитали неполную структуру? Очень маловероятно для signalfd.
+                        fprintf(stderr, "[Signal Listener] Unexpected read size %zd from signalfd (expected %zu)\n",
+                                s, sizeof(fdsi));
+                    }
+                    // В любом случае ошибки или странного чтения,
+                    // не вызываем dispatch_signal и просто продолжаем цикл poll.
+                }
+            }
+            else if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
+            {
+                // Ошибка на самом дескрипторе signalfd
+                fprintf(stderr, "[Signal Listener] Error event 0x%x on signalfd.\n", pfd.revents);
+                g_running = false; // Выход при ошибке дескриптора
+                break;
+            }
+            else
+            {
+                printf("[Signal Listener] Unknown events: %d\n", pfd.revents);
+            }
+        }
+        else
+        {
+            // Таймаут poll (ret == 0), сигнала не было. Просто продолжаем цикл.
+        }
+    } // end while(g_running)
+
+    printf("[Signal Listener Thread %lu] Exiting.\n", (unsigned long)pthread_self());
+    return NULL;
+}
 
 // Инициализация
 void initialize_instances()
 {
+    // инициализация обработчика сигналов
+    g_signal_dispatch_table[0].signo = NEW_CONNECTION;
+    g_signal_dispatch_table[0].handler = handle_new_connection;
+    g_signal_dispatch_table[1].signo = NEW_MESSAGE;
+    g_signal_dispatch_table[1].handler = handle_new_message;
+    // добавить еще сигналы тут
+
+    g_signal_dispatch_table[2].signo = 0;
+    g_signal_dispatch_table[2].handler = NULL;
+
+    // инициализация остальных структур
     memset(g_servers, 0, sizeof(g_servers));
     memset(g_clients, 0, sizeof(g_clients));
     for (int i = 0; i < MAX_INSTANCES; ++i)
@@ -19,39 +256,85 @@ void initialize_instances()
     }
     g_num_servers = 0;
     g_num_clients = 0;
+
+    // запускаем работу
+    g_running = 1;
 }
 
 // Обработчик сигнала
-void signal_handler(int sig, siginfo_t *info, void *ucontext)
-{
-    // убираем варнинг
-    (void)ucontext;
+// void signal_handler(int sig, siginfo_t *info, void *ucontext)
+//{
+// // убираем варнинг
+// (void)ucontext;
 
-    if (sig == NEW_CONNECTION && info->si_code == SI_KERNEL)
-    {
-        u32 packed_data = (u32)info->si_int;
-        g_signal_client_id = unpack_id1(packed_data);
-        g_signal_shm_id = unpack_id2(packed_data);
-        g_signal_received_flag = 1;
-    }
-    else if(sig == NEW_MESSAGE && info->si_code == SI_KERNEL)
-    {
-        
-    }
-}
+// if (sig == NEW_CONNECTION && info->si_code == SI_KERNEL)
+// {
+//     u32 packed_data = (u32)info->si_int;
+//     g_signal_client_id = unpack_id1(packed_data);
+//     g_signal_shm_id = unpack_id2(packed_data);
+//     g_signal_received_flag = 1;
+// }
+// else if (sig == NEW_MESSAGE && info->si_code == SI_KERNEL)
+// {
+// }
+//}
 
 bool setup_signal_handler()
 {
-    struct sigaction sa;
-    sa.sa_flags = SA_SIGINFO | SA_RESTART;
-    sa.sa_sigaction = signal_handler; // Прежний обработчик сигнала
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(NEW_CONNECTION, &sa, NULL) == -1)
+    // struct sigaction sa;
+    // sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    // sa.sa_sigaction = signal_handler; // Прежний обработчик сигнала
+    // sigemptyset(&sa.sa_mask);
+    // if (sigaction(NEW_CONNECTION, &sa, NULL) == -1)
+    // {
+    //     perror("Failed to set signal handler");
+    //     return false;
+    // }
+    // printf("Signal handler is set\n");
+    printf("Initializing signal subsystem\n");
+
+    // поток-слушатель
+    g_listener_tid = 0;
+
+    // сбрасываем множество
+    sigemptyset(&g_mask);
+
+    // Добавляем все сигналы из нашей таблицы диспетчера
+    printf("Blocking signals for signalfd: ");
+    for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
     {
-        perror("Failed to set signal handler");
+        printf("%d ", g_signal_dispatch_table[i].signo);
+        sigaddset(&g_mask, g_signal_dispatch_table[i].signo);
+    }
+
+    // блокируем добавленные сигналыы
+    if (pthread_sigmask(SIG_BLOCK, &g_mask, NULL) != 0)
+    {
+        perror("pthread_sigmask failed");
         return false;
     }
-    printf("Signal handler is set\n");
+    printf("\nSignals blocked for default delivery.\n");
+
+    // Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
+    g_signalfd = signalfd(-1, &g_mask, SFD_CLOEXEC | SFD_NONBLOCK);
+    if (g_signalfd == -1)
+    {
+        printf("Error: g_signalrd = -1\n");
+        pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL);
+        return false;
+    }
+    printf("Signalfd created (fd=%d).\n", g_signalfd);
+
+    // Запускаем поток-слушатель
+    if (pthread_create(&g_listener_tid, NULL, signal_listener_thread, NULL) != 0)
+    {
+        printf("Error: Signal listener thread hasnt started\n");
+        close(g_signalfd);
+        pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL);
+        return false;
+    }
+    printf("Signal listener thread started (TID: %lu).\n", (unsigned long)g_listener_tid);
+
     return true;
 }
 
@@ -103,6 +386,26 @@ bool parse_index(const char *arg, int *index, int max_val)
     return true;
 }
 
+struct ServerInstance *find_server_by_driver_id(int id)
+{
+    if (!IS_ID_VALID(id))
+    {
+        printf("Error: id=%d is not valid\n", id);
+        return NULL;
+    }
+
+    for (int i = 0; i < MAX_INSTANCES; i++)
+    {
+        if (g_servers[i].server_id == id)
+        {
+            printf("Server (ID:%d) found\n", id);
+            return &g_servers[i];
+        }
+    }
+    printf("Server (ID:%d) not found\n", id);
+    return NULL;
+}
+
 struct ServerInstance *find_server_instance(int index)
 {
     if (index < 0 || index >= MAX_INSTANCES)
@@ -133,7 +436,7 @@ struct ClientInstance *find_client_instance(int index)
     return &g_clients[index];
 }
 
-// Ищет или создает слот для маппинга SHM у *конкретного* сервера
+// Ищет слот для маппинга SHM у *конкретного* сервера
 int server_find_shm_mapping_index(struct ServerInstance *server, int shm_id)
 {
     if (!server)
@@ -148,18 +451,56 @@ int server_find_shm_mapping_index(struct ServerInstance *server, int shm_id)
         }
     }
 
-    // Не найдено, пробуем добавить
+    // // Не найдено, пробуем добавить
+    // if (server->num_mappings < MAX_SERVER_SHM)
+    // {
+    //     int new_index = server->num_mappings++;
+    //     server->mappings[new_index].shm_id = shm_id;
+    //     server->mappings[new_index].mapped = false;
+    //     server->mappings[new_index].addr = MAP_FAILED;
+    //     server->mappings[new_index].size = 0;
+    //     return new_index;
+    // }
+    // printf("Server %d: Cannot track more SHM mappings (limit %d reached).\n", server->server_id, MAX_SERVER_SHM);
+    return -1;
+}
+
+struct ServerShmMapping *server_find_submem_by_id(struct ServerInstance *server, int sub_mem_id)
+{
+    if (!server || !IS_ID_VALID(sub_mem_id))
+        return NULL;
+
+    // поиск памяти с shm_id
+    for (int i = 0; i < server->num_mappings; ++i)
+    {
+        if (server->mappings[i].shm_id == sub_mem_id)
+        {
+            return &server->mappings[i];
+        }
+    }
+
+    return NULL;
+}
+
+// создание новой памяти отображения
+struct ServerShmMapping *server_create_shm_mapping(
+    struct ServerInstance *server, int sub_mem_id)
+{
+    if (!server)
+        return NULL;
+
+    // пробуем добавить отображение
     if (server->num_mappings < MAX_SERVER_SHM)
     {
         int new_index = server->num_mappings++;
-        server->mappings[new_index].shm_id = shm_id;
+        server->mappings[new_index].shm_id = sub_mem_id;
         server->mappings[new_index].mapped = false;
         server->mappings[new_index].addr = MAP_FAILED;
         server->mappings[new_index].size = 0;
-        return new_index;
+        return &server->mappings[new_index];
     }
-    printf("Server %d: Cannot track more SHM mappings (limit %d reached).\n", server->server_id, MAX_SERVER_SHM);
-    return -1;
+
+    return NULL;
 }
 
 // Ищет индекс подключения по client_id у *конкретного* сервера
@@ -198,13 +539,16 @@ void server_add_connection(struct ServerInstance *server, int client_id, int shm
     // Добавление нового
     if (server->num_connections < MAX_SERVER_CLIENTS)
     {
+        if (!server_create_shm_mapping(server, shm_id))
+        {
+            printf("Error: Cannot create submem for new connection\n");
+            return;
+        }
         int index = server->num_connections++;
         server->connections[index].client_id = client_id;
         server->connections[index].shm_id = shm_id;
         server->connections[index].active = true;
         printf("Server %d: Added connection: client %d -> shm %d\n", server->server_id, client_id, shm_id);
-        // Убедимся, что для shm_id есть слот в маппингах
-        server_find_shm_mapping_index(server, shm_id);
     }
     else
     {
@@ -272,7 +616,7 @@ bool server_mmap(int index, int shm_id)
     int map_index = server_find_shm_mapping_index(server, shm_id);
     if (map_index == -1)
     {
-        printf("Server %d: Cannot find or create mapping slot for shm_id %d.\n", server->server_id, shm_id);
+        printf("Server %d: Cannot find mapping slot for shm_id %d.\n", server->server_id, shm_id);
         return false;
     }
     if (server->mappings[map_index].mapped)
@@ -355,43 +699,30 @@ bool server_write(int index, int client_id, long offset, const char *text)
     return true;
 }
 
-bool server_read(int index, int client_id, long offset, long length)
+bool server_read(struct ServerInstance *server, struct ServerShmMapping *submem, long offset, long length)
 {
     // поиск сервера
-    struct ServerInstance *server = find_server_instance(index);
-    if (!server)
+    // struct ServerInstance *server = find_server_instance(index);
+    if (!server || !submem)
         return false;
 
-    // поиск соединения
-    int conn_index = server_find_connection_index(server, client_id);
-    if (conn_index == -1)
+    if (!submem->mapped)
     {
-        printf("Server %d: Client ID %d not found in connections.\n", server->server_id, client_id);
+        printf("Server %d: Memory for SHM ID %d is not mapped.\n", server->server_id, submem->shm_id);
         return false;
     }
-    // получение shm_id
-    int target_shm_id = server->connections[conn_index].shm_id;
-
-    // поиск общей памяти с id = target_shm_id
-    int map_index = server_find_shm_mapping_index(server, target_shm_id);
-    if (map_index == -1 || !server->mappings[map_index].mapped)
-    {
-        printf("Server %d: Memory for SHM ID %d (client %d) is not mapped.\n", server->server_id, target_shm_id, client_id);
-        return false;
-    }
-    struct ServerShmMapping *mapping = &server->mappings[map_index];
 
     // проверка сдвига
-    if (offset < 0 || length <= 0 || (size_t)offset >= mapping->size)
+    if (offset < 0 || length <= 0 || (size_t)offset >= submem->size)
     {
         printf("Invalid offset/length\n");
         return false;
     }
 
     size_t read_length = (size_t)length;
-    if ((size_t)offset + read_length > mapping->size)
+    if ((size_t)offset + read_length > submem->size)
     {
-        read_length = mapping->size - (size_t)offset;
+        read_length = submem->size - (size_t)offset;
         printf("Warning: Server read length truncated to %zu\n", read_length);
     }
 
@@ -402,9 +733,10 @@ bool server_read(int index, int client_id, long offset, long length)
         perror("malloc failed");
         return false;
     }
-    memcpy(read_buf, (char *)mapping->addr + offset, read_length);
+    memcpy(read_buf, (char *)submem->addr + offset, read_length);
     read_buf[read_length] = '\0';
-    printf("Server %d read from shm_id %d (client %d) at offset %ld (%zu bytes): \"%s\"\n", server->server_id, target_shm_id, client_id, offset, read_length, read_buf);
+    printf("Server %d read from shm_id %d at offset %ld (%zu bytes): \"%s\"\n",
+           server->server_id, submem->shm_id, offset, read_length, read_buf);
     free(read_buf);
     return true;
 }
@@ -598,7 +930,7 @@ bool client_write(int index, long offset, const char *text)
         return false;
     }
 
-    // если сдвиг выходи за границы памяти, то выходим с ошибкой
+    // если сдвиг выходит за границы памяти, то выходим с ошибкой
     if (offset < 0 || (size_t)offset >= client->shm.size)
     {
         printf("Invalid offset %ld (max %zu)\n", offset, client->shm.size - 1);
@@ -620,14 +952,13 @@ bool client_write(int index, long offset, const char *text)
     return true;
 }
 
-bool client_read(int index, long offset, long length)
+bool client_read(struct ClientInstance *client, long offset, long length)
 {
     // поиск нужного клиента
-    struct ClientInstance *client = find_client_instance(index);
     if (!client || !client->shm.mapped)
     {
         if (client && !client->shm.mapped)
-            printf("Client instance %d memory not mapped!\n", index);
+            printf("Client instance %d memory not mapped!\n", client->client_id);
         return false;
     }
 
@@ -655,7 +986,8 @@ bool client_read(int index, long offset, long length)
     }
     memcpy(read_buf, (char *)client->shm.addr + offset, read_length);
     read_buf[read_length] = '\0';
-    printf("Client instance %d read at offset %ld (%zu bytes): \"%s\"\n", index, offset, read_length, read_buf);
+    printf("Client instance %d read at offset %ld (%zu bytes): \"%s\"\n",
+           client->client_id, offset, read_length, read_buf);
     free(read_buf);
     return true;
 }
@@ -711,37 +1043,37 @@ void print_commands()
     printf("\tserver   <server_index>   read            <client_id>     <offset>   <length>\n");
 }
 
-void process_signal()
-{
-    if (g_signal_received_flag)
-    {
-        printf("\n[Main Loop] Signal Received: NEW_CONNECTION for client_id=%d, shm_id=%d\n",
-               g_signal_client_id, g_signal_shm_id);
+// void process_signal()
+//{
+//  if (g_signal_received_flag)
+//  {
+//      printf("\n[Main Loop] Signal Received: NEW_CONNECTION for client_id=%d, shm_id=%d\n",
+//             g_signal_client_id, g_signal_shm_id);
 
-        // TODO: нужно уведомлять только тот сервер, кому предназначается подключение,
-        // TODO: а не всех сразу 
-        // Уведомляем все активные серверные экземпляры об этом сигнале
-        int notified_servers = 0;
-        for (int i = 0; i < MAX_INSTANCES; ++i)
-        {
-            if (g_servers[i].active)
-            {
-                printf("  Notifying server instance %d (ID %d)...\n", i, g_servers[i].server_id);
-                server_add_connection(&g_servers[i], g_signal_client_id, g_signal_shm_id);
-                notified_servers++;
-            }
-        }
-        if (notified_servers == 0)
-        {
-            printf("  Warning: No active server instances found to process the signal.\n");
-        }
+//     // TODO: нужно уведомлять только тот сервер, кому предназначается подключение,
+//     // TODO: а не всех сразу
+//     // Уведомляем все активные серверные экземпляры об этом сигнале
+//     int notified_servers = 0;
+//     for (int i = 0; i < MAX_INSTANCES; ++i)
+//     {
+//         if (g_servers[i].active)
+//         {
+//             printf("  Notifying server instance %d (ID %d)...\n", i, g_servers[i].server_id);
+//             server_add_connection(&g_servers[i], g_signal_client_id, g_signal_shm_id);
+//             notified_servers++;
+//         }
+//     }
+//     if (notified_servers == 0)
+//     {
+//         printf("  Warning: No active server instances found to process the signal.\n");
+//     }
 
-        // Сбрасываем флаг и данные сигнала
-        g_signal_received_flag = 0;
-        g_signal_client_id = -1;
-        g_signal_shm_id = -1; // Сбрасываем и shm_id здесь
-    }
-}
+//     // Сбрасываем флаг и данные сигнала
+//     g_signal_received_flag = 0;
+//     g_signal_client_id = -1;
+//     g_signal_shm_id = -1; // Сбрасываем и shm_id здесь
+// }
+//}
 
 void process_command(char *input)
 {
@@ -759,7 +1091,7 @@ void process_command(char *input)
         return;
 
     int index = -1, index2 = -1; // Для индексов и ID
-    long offset = -1, length = -1;
+    long offset = -1;            //, length = -1;
 
     /**
      * обработка блока команд клиента
@@ -824,19 +1156,20 @@ void process_command(char *input)
             else if (arg2 && strcmp(arg2, "read") == 0)
             {
                 // если нет сдвига или длины текста
-                if (!arg3 || !arg4)
-                {
-                    printf("Usage: client <index> read <offset> <len>");
-                    return;
-                }
+                // if (!arg3 || !arg4)
+                // {
+                //     printf("Usage: client <index> read <offset> <len>");
+                //     return;
+                // }
 
                 // получаем сдвиг
-                offset = strtol(arg3, NULL, 0);
+                // offset = strtol(arg3, NULL, 0);
                 // получаем длину
-                length = strtol(arg4, NULL, 0);
+                // length = strtol(arg4, NULL, 0);
 
                 // читаем
-                client_read(index, offset, length);
+                // client_read(index, offset, length);
+                printf("Warning: client_read called automatically\n");
             }
             else
             {
@@ -921,24 +1254,26 @@ void process_command(char *input)
             // чтение из памяти
             else if (arg2 && strcmp(arg2, "read") == 0)
             {
-                // получение сдвига и текста
-                char *str_offset = strtok(arg4, " ");                
-                char *p_end;
-                char *str_len = strtok(NULL, "");
-                
-                // получение client_id и проверка: есть ли сдвиг с длинной текста
-                if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4 && str_offset && str_len)
-                {
-                    offset = strtol(str_offset, &p_end, 10);
-                    length = strtol(str_len, &p_end, 10);
 
-                    // чтение
-                    server_read(index, index2, offset, length);
-                }
-                else
-                {
-                    printf("Usage: server <server_index> read <client_id> <offset> <length>\n");
-                }
+                printf("Warning: server_read called automatically\n");
+                // получение сдвига и текста
+                // char *str_offset = strtok(arg4, " ");
+                // char *p_end;
+                // char *str_len = strtok(NULL, "");
+
+                // // получение client_id и проверка: есть ли сдвиг с длинной текста
+                // if (parse_index(arg3, &index2, MAX_INSTANCES) && arg4 && str_offset && str_len)
+                // {
+                //     offset = strtol(str_offset, &p_end, 10);
+                //     length = strtol(str_len, &p_end, 10);
+
+                //     // чтение
+                //     server_read(index, index2, offset, length);
+                // }
+                // else
+                // {
+                //     printf("Usage: server <server_index> read <client_id> <offset> <length>\n");
+                // }
             }
             else
             {
@@ -981,7 +1316,17 @@ void process_command(char *input)
 
 void cleanup_all()
 {
-    printf("Cleaning up all instances...\n");
+    printf("Cleaning up\n");
+    
+    g_running = false;
+    // завершаем поток обработки сигналов
+    if (g_listener_tid != 0)
+    {
+        pthread_join(g_listener_tid, NULL);
+        printf("Signal listening thread joined\n");
+    }
+
+    // очистка структур данных
     for (int i = 0; i < MAX_INSTANCES; ++i)
     {
         if (g_clients[i].active)
@@ -993,19 +1338,37 @@ void cleanup_all()
             server_cleanup(&g_servers[i]);
         }
     }
+
+    // закрытие файлового дескриптора драйвера
     if (g_dev_fd >= 0)
     {
         close(g_dev_fd);
         g_dev_fd = -1;
         printf("Device closed.\n");
     }
+
+    // закрытие файлового дескриптора сигналов
+    if (g_signalfd != -1)
+    {
+        close(g_signalfd);
+        g_signalfd = -1;
+        printf("Signalfd closed\n");
+    }
+
+    // разблокируем сигналы
+    if (!pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL))
+        printf("Mask deleted\n");
+    else
+        perror("pthread_sigmask error while exiting");
+    
+    printf("Exiting\n");
 }
 
 // Точка входа
 int main()
 {
     char input[MAX_INPUT_LEN];
-    bool running = true;
+    // bool running = true;
 
     initialize_instances();
     if (!setup_signal_handler() || !open_device())
@@ -1017,9 +1380,9 @@ int main()
     printf("RIPC Multi-Instance Test Application (PID: %d)\n", getpid());
     // print_commands();
 
-    while (running)
+    while (g_running)
     {
-        process_signal(); // Обработка флага сигнала перед запросом ввода
+        // process_signal(); // Обработка флага сигнала перед запросом ввода
 
         printf("> ");
         fflush(stdout);
@@ -1038,7 +1401,7 @@ int main()
         // Проверяем на команду exit до вызова strtok
         if (strncmp(input, "exit", 4) == 0 && (input[4] == '\n' || input[4] == '\0' || isspace(input[4])))
         {
-            running = false;
+            g_running = false;
             continue;
         }
 

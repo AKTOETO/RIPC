@@ -13,6 +13,12 @@ struct connection_t *create_connection(
     struct server_t *server,
     struct sub_mem_t *mem)
 {
+    if(!client || !server || !mem)
+    {
+        ERR("Client or server or mem pointer is NULL");
+        return NULL;
+    }
+
     struct connection_t *con = kmalloc(sizeof(*con), GFP_KERNEL);
 
     if (!con)
