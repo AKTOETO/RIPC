@@ -38,7 +38,7 @@ struct server_t *server_create(const char *name)
     strscpy(srv->m_name, name, MAX_SERVER_NAME);
     srv->m_id = generate_id(&g_id_gen);
     INIT_LIST_HEAD(&srv->connection_list.list);
-    srv->m_task_p = NULL; 
+    srv->m_task_p = NULL;
 
     // инициализация блокировок
     mutex_init(&srv->m_lock);
@@ -54,7 +54,7 @@ struct server_t *server_create(const char *name)
     return srv;
 }
 
-void server_add_task(struct server_t *srv, struct servers_list_t* task)
+void server_add_task(struct server_t *srv, struct servers_list_t *task)
 {
     if (!srv || !task)
     {
@@ -75,6 +75,45 @@ void server_add_task(struct server_t *srv, struct servers_list_t* task)
     srv->m_task_p = task;
 }
 
+void server_cleanup_connections(struct server_t *srv)
+{
+    struct serv_conn_list_t *srv_conn_entry, *tmp;
+
+    if (!srv)
+        return;
+    INF("Cleaning up connections for server %d ('%s')", srv->m_id, srv->m_name);
+
+    mutex_lock(&srv->m_con_list_lock); // Блокируем список соединений сервера
+    list_for_each_entry_safe(srv_conn_entry, tmp, &srv->connection_list.list, list)
+    {
+        struct connection_t *conn = srv_conn_entry->conn;
+
+        // Удаляем элемент из списка сервера ДО вызова delete_connection
+        list_del(&srv_conn_entry->list);
+        kfree(srv_conn_entry); // Освобождаем элемент списка
+
+        if (conn)
+        {
+            INF("Processing connection for client %d, sub_mem %d",
+                conn->m_client_p ? conn->m_client_p->m_id : -1,
+                conn->m_mem_p ? conn->m_mem_p->m_id : -1);
+            // Вызываем delete_connection, которая обработает и другую сторону
+            // и удалит соединение из глобального списка.
+            // Разблокируем мьютекс сервера перед вызовом, т.к. delete_connection
+            // может блокировать глобальный список соединений.
+            mutex_unlock(&srv->m_con_list_lock);
+            delete_connection(conn);           // Удалит соединение, отсоединит sub_mem и клиента
+            mutex_lock(&srv->m_con_list_lock); // Снова блокируем для след. итерации
+        }
+        else
+        {
+            INF("Found NULL connection pointer in server's connection list");
+        }
+    }
+    mutex_unlock(&srv->m_con_list_lock); // Финальная разблокировка
+    INF("Finished cleaning connections for server %d", srv->m_id);
+}
+
 // удаление сервера
 void server_destroy(struct server_t *srv)
 {
@@ -85,26 +124,25 @@ void server_destroy(struct server_t *srv)
         return;
     }
 
-    INF("Destroying server (ID:%d)(PID:%d)(NAME:%s)", 
-        srv->m_id, srv->m_task_p->m_reg_task->m_task_p->pid, srv->m_name);
+    INF("Destroying server (ID:%d)(NAME:%s)", srv->m_id, srv->m_name);
 
     // для безопасного удаления
-    struct serv_conn_list_t *con, *tmp;
+    //struct serv_conn_list_t *con, *tmp;
 
-    // Удаление списка соединений
-    mutex_lock(&srv->m_con_list_lock);
-    list_for_each_entry_safe(con, tmp, &srv->connection_list.list, list)
-    {
-        // удаляем соединение сервера
-        server_delete_connection(srv, con);
+    // // Удаление списка соединений
+    // mutex_lock(&srv->m_con_list_lock);
+    // list_for_each_entry_safe(con, tmp, &srv->connection_list.list, list)
+    // {
+    //     // удаляем соединение сервера
+    //     server_delete_connection(srv, con);
 
-        // удаление из списка подключенных клиентов к серверу
-        list_del(&con->list);
+    //     // удаление из списка подключенных клиентов к серверу
+    //     // list_del(&con->list);
 
-        // очистка памяти
-        kfree(con);
-    }
-    mutex_unlock(&srv->m_con_list_lock);
+    //     // очистка памяти
+    //     // kfree(con);
+    // }
+    // mutex_unlock(&srv->m_con_list_lock);
 
     // удаление сервера из глобального списка
     mutex_unlock(&g_servers_lock);
@@ -112,6 +150,8 @@ void server_destroy(struct server_t *srv)
     mutex_unlock(&g_servers_lock);
 
     free_id(&g_id_gen, srv->m_id);
+    mutex_destroy(&srv->m_lock);
+    mutex_destroy(&srv->m_con_list_lock);
     kfree(srv);
 }
 
@@ -266,12 +306,16 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
 
     // глобальная блокировка серверов для удаления подключения
     // mutex_lock(&srv->m_con_list_lock);
-    list_del(&con->list);
     if (con->conn)
     {
         con->conn->m_server_p = NULL;
         delete_connection(con->conn);
+        INF("server disconnected");
     }
+    else
+        INF("server doesnt have con ptr");
+
+    list_del(&con->list);
     kfree(con);
     // mutex_unlock(&srv->m_con_list_lock);
 }
@@ -328,6 +372,7 @@ struct serv_conn_list_t *server_find_conn(
         if (conn->conn && conn->conn == con)
         {
             // Нашли совпадение - сохраняем результат
+            INF("Connection found");
             mutex_unlock(&srv->m_con_list_lock);
             return conn;
         }

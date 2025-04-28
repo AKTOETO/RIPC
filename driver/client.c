@@ -54,6 +54,25 @@ void client_add_task(struct client_t *cli, struct clients_list_t *task)
     cli->m_task_p = task;
 }
 
+void client_cleanup_connection(struct client_t *cli)
+{
+    if (!cli)
+        return;
+    struct connection_t *conn = cli->m_conn_p;
+
+    if (conn)
+    {
+        INF("Cleaning up connection for client %d", cli->m_id);
+        cli->m_conn_p = NULL; // Убираем ссылку у клиента
+        // Вызываем delete_connection, которая обработает все остальное
+        delete_connection(conn);
+    }
+    else
+    {
+        INF("Client %d had no active connection", cli->m_id);
+    }
+}
+
 // удаление клиента
 void client_destroy(struct client_t *cli)
 {
@@ -64,15 +83,14 @@ void client_destroy(struct client_t *cli)
         return;
     }
 
-    INF("Destroying client (ID:%d)(PID:%d)\n",
-        cli->m_id, cli->m_task_p->m_reg_task->m_task_p->pid);
+    INF("Destroying client (ID:%d))\n", cli->m_id);
 
     // удаление соединения, если оно есть
-    if (cli->m_conn_p)
-    {
-        cli->m_conn_p->m_client_p = NULL;
-        delete_connection(cli->m_conn_p);
-    }
+    // if (cli->m_conn_p)
+    // {
+    //     cli->m_conn_p->m_client_p = NULL;
+    //     delete_connection(cli->m_conn_p);
+    // }
 
     // удаление из глобального списка
     mutex_lock(&g_clients_lock);

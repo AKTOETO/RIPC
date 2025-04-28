@@ -182,10 +182,20 @@ void submem_clear(struct sub_mem_t *sub)
 
 int submem_disconnect(struct sub_mem_t *sub, struct connection_t* con)
 {
-    if (!sub || !con)
+    if (!sub)
     {
-        ERR("There is not submem or con");
-        return 0;
+        ERR("There is not submem");
+        return -1;
+    }
+    if(!con)
+    {
+        ERR("There is not con");
+        return -1;
+    }
+    if(!sub->m_conn_p)
+    {
+        ERR("There is not sub->con");
+        return -1;
     }
 
     if(con != sub->m_conn_p)
@@ -193,6 +203,8 @@ int submem_disconnect(struct sub_mem_t *sub, struct connection_t* con)
         ERR("not the same connection was passed");
         return -1;
     }
+
+    INF("submem disconnect");
 
     // отключение от соединения
     sub->m_conn_p = NULL;

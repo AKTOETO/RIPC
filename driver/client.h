@@ -31,6 +31,9 @@ struct client_t *client_create(void);
 // прикрепление к определенному процессу
 void client_add_task(struct client_t *cli, struct clients_list_t *task);
 
+// очистка соединения клиента
+void client_cleanup_connection(struct client_t *cli);
+
 // удаление клиента
 void client_destroy(struct client_t *cli);
 

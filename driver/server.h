@@ -40,6 +40,9 @@ struct server_t *server_create(const char *name);
 // прикрепление к определенному процессу
 void server_add_task(struct server_t *srv, struct servers_list_t*task);
 
+// очистка всех соединений сервера
+void server_cleanup_connections(struct server_t *srv);
+
 // удаление сервера
 void server_destroy(struct server_t *srv);
 

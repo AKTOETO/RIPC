@@ -290,53 +290,96 @@ void reg_task_delete(struct reg_task_t *reg_task)
         return;
     }
 
-    if (reg_task->m_task_p && pid_alive(reg_task->m_task_p))
+    if (!reg_task->m_task_p || !pid_alive(reg_task->m_task_p))
     {
-        INF("Destroying reg_task (PID:%d)", reg_task->m_task_p->pid);
-        put_task_struct(reg_task->m_task_p);
-        reg_task->m_task_p = NULL;
+        ERR("There is no task ptr in reg_task");
+        return;
     }
-    else
-        INF("Destroying reg_task (PID:DEAD)");
 
-    // server_destroy
-    // client_destroy
-    // notification_delete
+    INF("Destroying reg_tasks (PID:%d)", reg_task->m_task_p->pid);
 
-    // удаляем список серверов
-    if (!list_empty(&reg_task->m_servers))
+    struct servers_list_t *srv_entry, *srv_tmp;
+    struct clients_list_t *cli_entry, *cli_tmp;
+
+    // Очистить СОЕДИНЕНИЯ для серверов этого процесса
+    // (Это вызовет delete_connection и освободит sub_mem)
+    list_for_each_entry(srv_entry, &reg_task->m_servers, list)
     {
-        INF("Deleteing servers");
-        struct servers_list_t *srv, *srv_tmp;
-        list_for_each_entry_safe(srv, srv_tmp, &reg_task->m_servers, list)
+        if (srv_entry->m_server)
         {
-            if (srv->m_server)
-                server_destroy(srv->m_server);
-            else
-                ERR("Empty server ptr");
-            servers_list_t_delete(srv);
+            server_cleanup_connections(srv_entry->m_server);
         }
     }
 
-    // удаляем список клиентов
-    if (!list_empty(&reg_task->m_clients))
+    // Очистить СОЕДИНЕНИЕ для клиентов этого процесса
+    // (Это вызовет delete_connection и освободит sub_mem)
+    list_for_each_entry(cli_entry, &reg_task->m_clients, list)
     {
-        INF("Deleteing clients");
-        struct clients_list_t *cli, *cli_tmp;
-        list_for_each_entry_safe(cli, cli_tmp, &reg_task->m_clients, list)
+        if (cli_entry->m_client)
         {
-            if (cli->m_client)
-                client_destroy(cli->m_client);
-            else
-                ERR("Empty client ptr");
-            clients_list_t_delete(cli);
+            client_cleanup_connection(cli_entry->m_client);
         }
     }
+
+    // Удалить сами структуры серверов
+    list_for_each_entry_safe(srv_entry, srv_tmp, &reg_task->m_servers, list)
+    {
+        // Удаляем из списка reg_task
+        list_del(&srv_entry->list);
+        if (srv_entry->m_server)
+        {
+            // Удаляем сервер (из глоб. списка и kfree)
+            server_destroy(srv_entry->m_server);
+        }
+        // Освобождаем элемент списка reg_task
+        kfree(srv_entry);
+    }
+
+    // Удалить сами структуры клиентов
+    list_for_each_entry_safe(cli_entry, cli_tmp, &reg_task->m_clients, list)
+    {
+        list_del(&cli_entry->list);
+        if (cli_entry->m_client)
+        {
+            client_destroy(cli_entry->m_client);
+        }
+        kfree(cli_entry);
+    }
+
+    // // удаляем список серверов
+    // if (!list_empty(&reg_task->m_servers))
+    // {
+    //     INF("Deleting servers");
+    //     struct servers_list_t *srv, *srv_tmp;
+    //     list_for_each_entry_safe(srv, srv_tmp, &reg_task->m_servers, list)
+    //     {
+    //         if (srv->m_server)
+    //             server_destroy(srv->m_server);
+    //         else
+    //             ERR("Empty server ptr");
+    //         servers_list_t_delete(srv);
+    //     }
+    // }
+
+    // // удаляем список клиентов
+    // if (!list_empty(&reg_task->m_clients))
+    // {
+    //     INF("Deleting clients");
+    //     struct clients_list_t *cli, *cli_tmp;
+    //     list_for_each_entry_safe(cli, cli_tmp, &reg_task->m_clients, list)
+    //     {
+    //         if (cli->m_client)
+    //             client_destroy(cli->m_client);
+    //         else
+    //             ERR("Empty client ptr");
+    //         clients_list_t_delete(cli);
+    //     }
+    // }
 
     // удаляем список уведомлений
     if (!list_empty(&reg_task->m_notif_list))
     {
-        INF("Deleteing notifications");
+        INF("Deleting notifications");
         struct notification_t *notif, *notif_tmp;
         list_for_each_entry_safe(notif, notif_tmp, &reg_task->m_notif_list, list)
         {
@@ -344,12 +387,28 @@ void reg_task_delete(struct reg_task_t *reg_task)
         }
     }
 
-    // удаление сервера из глобального списка
-    mutex_unlock(&g_reg_task_lock);
+    if (reg_task->m_task_p)
+    {
+        put_task_struct(reg_task->m_task_p);
+        reg_task->m_task_p = NULL;
+    }
+    mutex_lock(&g_reg_task_lock);
     list_del(&reg_task->list);
     mutex_unlock(&g_reg_task_lock);
-
     kfree(reg_task);
+
+    INF("Finished cleaning reg_task");
+
+    // // освобождение task_struct
+    // put_task_struct(reg_task->m_task_p);
+    // reg_task->m_task_p = NULL;
+
+    // // удаление сервера из глобального списка
+    // mutex_unlock(&g_reg_task_lock);
+    // list_del(&reg_task->list);
+    // mutex_unlock(&g_reg_task_lock);
+
+    // kfree(reg_task);
 }
 
 struct reg_task_t *reg_task_find_by_task_struct(struct task_struct *task)

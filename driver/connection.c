@@ -37,7 +37,7 @@ struct connection_t *create_connection(
 
     // добавление в глобальный список
     mutex_lock(&g_conns_lock);
-    list_add(&con->list, &g_conns_list);
+    list_add_tail(&con->list, &g_conns_list);
     mutex_unlock(&g_conns_lock);
 
     INF("Created new connection btw serv: %d client: %d shm: %d",
@@ -81,52 +81,119 @@ struct connection_t *find_connection(
     return NULL;
 }
 
+// отсоединение sub_mem от соединения
+static void safe_disconnect_submem(struct connection_t *conn)
+{
+    if (conn && conn->m_mem_p)
+    {
+        struct sub_mem_t *sub = conn->m_mem_p;
+        INF("Disconnecting sub_mem %d from conn %p", sub->m_id, conn);
+        if (sub->m_conn_p == conn)
+        {
+            sub->m_conn_p = NULL; // Помечаем sub_mem как свободную
+        }
+        else
+        {
+            INF("sub_mem %d connection pointer mismatch!", sub->m_id);
+        }
+        conn->m_mem_p = NULL; // Убираем ссылку из соединения
+    }
+}
+
 // удаление соединения
-void delete_connection(struct connection_t *con)
+void delete_connection(struct connection_t *conn)
 {
     // проверка входных данных
-    if (!con)
+    if (!conn)
     {
         ERR("Attempt to destroy NULL connection");
         return;
     }
 
-    INF("deleting connection");
+    INF("Deleting connection: ClientID=%d, ServerID=%d, SubMemID=%d",
+        conn->m_client_p ? conn->m_client_p->m_id : -1,
+        conn->m_server_p ? conn->m_server_p->m_id : -1,
+        conn->m_mem_p ? conn->m_mem_p->m_id : -1);
 
-    // отсоединение от сервера
-    if (con->m_server_p)
+    // Отсоединяем sub_mem
+    safe_disconnect_submem(conn);
+
+    // Уведомляем другого участника (если он есть), что соединение разорвано
+    // Это важно, чтобы у другого участника не остался висячий указатель conn->m_client_p/m_server_p
+    // и чтобы соединение было удалено из списка сервера.
+
+    // отсоединение от клиента
+    if (conn->m_client_p)
     {
-        
-        struct serv_conn_list_t *cn = server_find_conn(con->m_server_p, con);
-        if (!cn)
+        // Сервер ушел, уведомляем клиента
+        if (conn->m_client_p->m_conn_p == conn)
         {
-            ERR("Server's connection has not connection ptr");
+            conn->m_client_p->m_conn_p = NULL;
+            INF("Cleared connection pointer in client %d", conn->m_client_p->m_id);
         }
         else
         {
-            cn->conn = NULL;
-            //server_destroy(con->m_server_p);
+            // Этого не должно быть, если указатели синхронны
+            INF("Connection points to client %d, but client points elsewhere!", conn->m_client_p->m_id);
         }
+        conn->m_client_p = NULL; // Обнуляем в соединении
     }
 
-    // отсоединение от клиента
-    if (con->m_client_p)
+    // отсоединение от сервера
+    if (conn->m_server_p)
     {
-        con->m_client_p->m_conn_p = NULL;
-        //client_destroy(con->m_client_p);
+        // struct serv_conn_list_t *cn = server_find_conn(con->m_server_p, con);
+        // if (!cn)
+        // {
+        //     ERR("Server's connection has not connection ptr");
+        // }
+        // else
+        // {
+        //     INF("disconnect server from connection");
+        //     server_delete_connection(con->m_server_p, cn);
+        //     // cn->conn = NULL;
+        //     // server_destroy(con->m_server_p);
+        // }
+
+        // Клиент ушел, уведомляем сервер и удаляем из его списка
+        struct serv_conn_list_t *srv_conn_entry;
+        INF("Removing connection from server %d's list", conn->m_server_p->m_id);
+        srv_conn_entry = server_find_conn(conn->m_server_p, conn); // Находим запись в списке сервера
+
+        mutex_lock(&conn->m_server_p->m_con_list_lock);
+        if (srv_conn_entry)
+        {
+            list_del(&srv_conn_entry->list); // Удаляем из списка сервера
+            kfree(srv_conn_entry);           // Освобождаем элемент списка
+            INF("Connection removed from server %d list.", conn->m_server_p->m_id);
+        }
+        else
+        {
+            INF("Connection not found in server %d's list!", conn->m_server_p->m_id);
+        }
+        mutex_unlock(&conn->m_server_p->m_con_list_lock);
+        conn->m_server_p = NULL; // Обнуляем в соединении
     }
 
-    // отсоединение от памяти
-    if (con->m_mem_p)
-        submem_disconnect(con->m_mem_p, con);
+    // // отсоединение от памяти
+    // if (con->m_mem_p)
+    // {
+    //     INF("Disconnect submem");
+    //     submem_disconnect(con->m_mem_p, con);
+    //     con->m_mem_p = NULL;
+    // }
 
     // удаление из общего списка
     mutex_lock(&g_conns_lock);
-    list_del(&con->list);
+    list_del(&conn->list);
+    INF("deleted conn from list");
     mutex_unlock(&g_conns_lock);
 
     // очистка памяти
-    kfree(con);
+    kfree(conn);
+
+    conn = NULL;
+    INF("Connection structure freed.");
 }
 
 void delete_connection_list(void)

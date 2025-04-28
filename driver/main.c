@@ -42,12 +42,12 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     struct server_t *server = NULL;
     struct client_t *client = NULL;
     struct connection_t *conn = NULL;
-    //struct notification_t *ntf = NULL;
-    // struct kernel_siginfo sig_info; // для отправки сигнала
-    // int packed_id = -1;
-    // int sig_ret = -1;
-    // struct client_t *client2 = NULL;
-    // struct shm_t *shm = NULL;
+    // struct notification_t *ntf = NULL;
+    //  struct kernel_siginfo sig_info; // для отправки сигнала
+    //  int packed_id = -1;
+    //  int sig_ret = -1;
+    //  struct client_t *client2 = NULL;
+    //  struct shm_t *shm = NULL;
 
     // для регистрации сервера
     struct server_registration reg;
@@ -103,7 +103,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // регистрируем сервер в процессе
         reg_task_add_server(reg_task, server);
 
-        if(!server->m_task_p)
+        if (!server->m_task_p)
         {
             ERR("Server's task ptr i NULL");
             ret = -ENOENT;
@@ -130,7 +130,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // регистрируем клиент в процессе
         reg_task_add_client(reg_task, client);
 
-        if(!client->m_task_p)
+        if (!client->m_task_p)
         {
             ERR("client's task ptr is NULL");
             ret = -ENOENT;
@@ -216,7 +216,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         // отправка уведомления
-        if((ret = notification_send(CLIENT, NEW_MESSAGE, conn)))
+        if ((ret = notification_send(CLIENT, NEW_MESSAGE, conn)))
         {
             ERR("sending notif failed");
         }
@@ -321,7 +321,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         }
 
-        if((ret = notification_send(SERVER, NEW_MESSAGE, conn)))
+        if ((ret = notification_send(SERVER, NEW_MESSAGE, conn)))
         {
             ERR("sending notif failed");
         }
@@ -400,7 +400,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     struct connection_t *conn = NULL;
     u32 packed_cli_sub_id = 0;
     // kernel_siginfo sig_info; // для отправки сигнала
-    //struct notification_t *ntf = NULL;
+    // struct notification_t *ntf = NULL;
 
     // TODO: пока еще нет ограничений на id, в будущем переделать
     // Проверяем корректность offset (должен содержать id клиента/сервера)
@@ -486,7 +486,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         // int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
 
         // отправка уведомления
-        if((ret = notification_send(CLIENT, NEW_CONNECTION, conn)))
+        if ((ret = notification_send(CLIENT, NEW_CONNECTION, conn)))
         {
             ERR("notification sending failed");
         }
@@ -630,12 +630,17 @@ static int ipc_release(struct inode *inode, struct file *filp)
     if (!reg_task)
     {
         ERR("There is no reg_task in private_data");
-        return -ENOENT;
+        return 0;
     }
 
-    reg_task_delete(reg_task);
+    INF("Cleaning up task resources for PID %d",
+        reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
 
-    INF("Task deleted");
+    // Вся логика очистки теперь в reg_task_delete
+    reg_task_delete(reg_task);
+    filp->private_data = NULL;
+
+    INF("Release: Task cleanup complete.");
     return 0;
 }
 
@@ -687,7 +692,7 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
 
 static __poll_t ipc_poll(struct file *filp, poll_table *wait)
 {
-    //INF("=== new poll request ===");
+    // INF("=== new poll request ===");
     struct reg_task_t *reg_task = filp->private_data;
 
     if (!reg_task)
@@ -792,23 +797,75 @@ class_fail:
 
 static void __exit ipc_exit(void)
 {
-    INF("=== exiting ===");
-    // удаление глобальных списков
-    delete_shm_list();
+    INF("=== RIPC Driver Unloading ===");
+
+    // Удаление всех зарегистрированных задач (процессов)
+    // Это должно каскадно вызвать очистку серверов, клиентов и соединений,
+    // принадлежащих этим задачам, через ipc_release -> reg_task_delete.
+    // Но на случай, если какие-то задачи не были корректно удалены
+    // (например, процесс был убит -9 и release не вызвался),
+    // пройдемся по списку задач и принудительно их удалим.
+    struct reg_task_t *reg_task, *reg_tmp;
+    INF("Cleaning up remaining registered tasks...");
+    mutex_lock(&g_reg_task_lock);
+    list_for_each_entry_safe(reg_task, reg_tmp, &g_reg_task_list, list)
+    {
+        // Удаляем из списка перед вызовом delete, чтобы избежать гонок,
+        // так как reg_task_delete тоже лочит и удаляет.
+        list_del(&reg_task->list);
+        mutex_unlock(&g_reg_task_lock);
+
+        INF("Force deleting reg_task for PID %d during exit.",
+            reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
+
+        // Вызовет очистку серверов/клиентов/соединений
+        reg_task_delete(reg_task);
+
+        mutex_lock(&g_reg_task_lock);
+    }
+    mutex_unlock(&g_reg_task_lock);
+    INF("Finished cleaning registered tasks.");
+
+    // Дополнительная проверка и очистка глобальных списков
+    INF("Performing final cleanup of global lists...");
     delete_server_list();
     delete_client_list();
-    delete_connection_list();
+    // Пулы памяти SHM (удалит shm_t и вызовет submem_clear)
+    delete_shm_list();
 
-    // удаление глобального генераора id
+    INF("Finished final list cleanup.");
+
+    // Освобождение генератора ID
+    INF("Destroying global ID generator...");
     DELETE_ID_GENERATOR(&g_id_gen);
+    INF("ID generator destroyed.");
 
-    // удаление структур драйвера
-    cdev_del(&g_cdev);
-    device_destroy(g_dev_class, g_dev_num);
-    class_destroy(g_dev_class);
-    unregister_chrdev_region(g_dev_num, g_dev_count);
+    // Удаление символьного устройства и класса
+    INF("Removing character device and class...");
+    if (g_cdev.ops)
+    { // Проверяем, была ли инициализирована cdev
+        cdev_del(&g_cdev);
+        INF("Character device deleted.");
+    }
+    if (g_dev_class)
+    {
+        // Удаляем сам файл устройства (/dev/ripc)
+        device_destroy(g_dev_class, g_dev_num);
+        INF("Device node /dev/%s destroyed.", DEVICE_NAME);
+        // Удаляем класс устройства
+        class_destroy(g_dev_class);
+        INF("Device class '%s' destroyed.", CLASS_NAME);
+        g_dev_class = NULL;
+    }
 
-    INF("driver unloaded");
+    // Освобождение диапазона номеров устройств
+    if (g_major != 0)
+    {
+        unregister_chrdev_region(g_dev_num, g_dev_count);
+        INF("Character device region (Major: %d) unregistered.", g_major);
+    }
+
+    INF("RIPC driver unloaded successfully.");
 }
 
 module_init(ipc_init);
