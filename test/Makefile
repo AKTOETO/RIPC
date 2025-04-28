@@ -4,7 +4,7 @@ TEST_BIN = test
 
 # Добавляем каталог include
 CFLAGS = -I$(CURDIR)/../include -Wall -Wextra -g -fsanitize=address -fno-omit-frame-pointer
-LDFLAGS = -fsanitize=address
+LDFLAGS = -lpthread
 
 default: help
 
@@ -12,7 +12,7 @@ b: $(TEST_SRC)
 	@echo ""
 	@echo "== BUILDING TEST =="
 	mkdir -p build
-	gcc $(CFLAGS) -o build/$(TEST_BIN) $<
+	gcc $(CFLAGS) -o build/$(TEST_BIN) $< $(LDFLAGS)
 	chmod +x build/$(TEST_BIN)
 
 c:

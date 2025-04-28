@@ -3,7 +3,6 @@ DRIVER_DIR = driver
 TEST_DIR = test
 
 # Компиляторы
-KERNEL_CC = gcc-12  # Компилятор для драйвера
 APP_CC = gcc        # Компилятор для приложений
 
 
@@ -12,13 +11,13 @@ default: help
 a: d t
 
 d:
-	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) b
+	$(MAKE) -C $(DRIVER_DIR) b
 
 di: 
-	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) i
+	$(MAKE) -C $(DRIVER_DIR) i
 
 dr:
-	$(MAKE) -C $(DRIVER_DIR) CC=$(KERNEL_CC) r
+	$(MAKE) -C $(DRIVER_DIR) r
 
 t:
 	$(MAKE) -C $(TEST_DIR) CC=$(APP_CC) b

@@ -1,5 +1,3 @@
-#CC ?= gcc-12  # По умолчанию компилятор
-
 # итоговый модуль
 obj-m += dripc.o
 
@@ -11,9 +9,13 @@ dripc-y := id.o connection.o client.o server.o shm.o main.o sigs.o
 ccflags-y += -I$(PWD)/include 
 ccflags-y += -I$(PWD)/driver 
 #ccflags-y += -I$(CURDIR)/.../include
+CURRENT = $(shell uname -r)
 
 # Путь к ядру
-KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+KERNELDIR ?= /lib/modules/$(CURRENT)/build
+
+# получение нужного компилятора
+CC = $(shell grep CONFIG_CC_VERSION /boot/config-$(CURRENT) | cut -d'"' -f2 | awk '{print $$1}')
 
 default: help
 
@@ -22,13 +24,13 @@ b:
 	@echo ""
 	@echo "== BUILDING DRIVER =="
 	@echo "Компиляция с флагами: $(ccflags-y)"
-	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) modules
+	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules
 
 # очистка верменных файлов
 c:
 	@echo ""
 	@echo "== CLEANING DRIVER =="
-	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) clean
+	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) clean
 	rm -rf *.ko *.o *.mod.c .*.cmd .tmp_versions Module.symvers modules.order
 
 # установка модуля ядра
