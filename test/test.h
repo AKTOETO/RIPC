@@ -84,8 +84,6 @@ volatile bool g_running = 0;
 volatile int g_signalfd = -1;
 // поток-слушатель
 extern pthread_t g_listener_tid;
-// маска для обработки конкретных сигналов
-extern sigset_t g_mask;
 
 // массив обработчиков сигналов
 volatile struct SignalDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];

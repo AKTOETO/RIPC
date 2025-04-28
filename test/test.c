@@ -3,8 +3,8 @@
 #include <poll.h>  // pollfd
 #include <pthread.h>
 
-// маска для обработки конкретных сигналов
-sigset_t g_mask;
+// // маска для обработки конкретных сигналов
+// sigset_t g_mask;
 // поток-слушатель
 pthread_t g_listener_tid = 0;
 
@@ -107,18 +107,24 @@ void handle_new_message(const struct signalfd_siginfo *fdsi)
 // Функция поиска и вызова обработчика
 void dispatch_signal(const struct signalfd_siginfo *fdsi)
 {
-    printf("\n[Dispatcher] Info: Looking for signal handler %d\n", fdsi->ssi_signo);
+    // Добавляем отладочный вывод перед циклом
+    printf("[Dispatcher] Received signal (signo=%d, code=%d, pid=%d, uid=%d, int=%d, errno=%d)\n",
+           (int)fdsi->ssi_signo, (int)fdsi->ssi_code, (int)fdsi->ssi_pid, (int)fdsi->ssi_uid,
+           fdsi->ssi_int, fdsi->ssi_errno); // si_errno для второго числа
+
     for (int i = 0; g_signal_dispatch_table[i].handler != NULL; ++i)
     {
+        // Добавляем отладочный вывод внутри цикла
+        // printf("[Dispatcher] Checking table entry %d: signo=%d\n", i, g_signal_dispatch_table[i].signo);
         if (g_signal_dispatch_table[i].signo == (int)fdsi->ssi_signo)
         {
-            // Нашли обработчик, вызываем его
+            printf("[Dispatcher] Found handler for signal %d at index %d. Calling handler...\n", fdsi->ssi_signo, i);
             g_signal_dispatch_table[i].handler(fdsi);
             return; // Обработали, выходим
         }
     }
     // Если обработчик не найден
-    printf("\n[Dispatcher] Warning: No handler found for signal %d\n", fdsi->ssi_signo);
+    printf("[Dispatcher] Warning: No handler found for signal %d\n", fdsi->ssi_signo);
     printf("> ");
     fflush(stdout);
 }
@@ -128,11 +134,54 @@ void *signal_listener_thread(void *arg)
 {
     (void)arg;
     printf("[Signal Listener]: Thread %lu started.\n", (unsigned long)pthread_self());
-    printf("[Signal Listener]: signalfd: %d\n", g_signalfd);
+
+    // маска сигналов
+    sigset_t mask;
+
+    // сбрасываем множество
+    sigemptyset(&mask);
+
+    // Добавляем все сигналы из нашей таблицы диспетчера
+    printf("[Signal Listener]: Blocking signals for signalfd: ");
+    for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
+    {
+        printf("%d ", g_signal_dispatch_table[i].signo);
+        sigaddset(&mask, g_signal_dispatch_table[i].signo);
+    }
+
+    // блокируем добавленные сигналыы
+    if (pthread_sigmask(SIG_SETMASK, &mask, NULL) != 0)
+    {
+        perror("[Signal Listener]: pthread_sigmask failed");
+        return false;
+    }
+    printf("\n[Signal Listener]: Signals blocked for default delivery.\n");
+
+    //// Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
+    //// g_signalfd = signalfd(-1, &mask, 0);
+    // g_signalfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
+    // if (g_signalfd == -1)
+    //{
+    //     printf("[Signal Listener]: Error: g_signalrd = -1\n");
+    //     pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+    //     return false;
+    // }
+    // printf("[Signal Listener]: Signalfd created (fd=%d).\n", g_signalfd);
+
     struct pollfd pfd;
+
+    // Проверяем валидность g_signalfd перед использованием
+    if (g_signalfd <= 0)
+    {
+        fprintf(stderr, "[Signal Listener] Error: Invalid signalfd (%d). Thread exiting.\n", g_signalfd);
+        return NULL;
+    }
+
     pfd.fd = g_signalfd;
     pfd.events = POLLIN; // Ждем только событие чтения
-    pfd.revents = 0;
+    // pfd.revents = 0;
+
+    printf("[Signal Listener] Waiting for signals\n");
 
     while (g_running)
     {
@@ -153,6 +202,7 @@ void *signal_listener_thread(void *arg)
             // Ошибка в poll (кроме EINTR)
             if (errno == EINTR)
             {
+                printf("[Signal Listener] poll interrupted by EINTR. Continuing...\n");
                 continue; // Прервано, просто повторяем poll
             }
             perror("[Signal Listener] poll failed");
@@ -170,39 +220,48 @@ void *signal_listener_thread(void *arg)
 
                 // Дескриптор готов к чтению
                 struct signalfd_siginfo fdsi;
-                ssize_t s = read(g_signalfd, &fdsi, sizeof(fdsi));
 
-                // проверка на чтение всей структуры сигнала
-                if (s == sizeof(fdsi))
+                // читаем все ожидающие сигналы, пока не вернется EAGAIN
+                while (1)
                 {
-                    // УСПЕХ: Прочитали ровно одну структуру siginfo
-                    // Теперь можно безопасно использовать данные в fdsi
-                    dispatch_signal(&fdsi); // Вызываем диспетчер
-                }
-                else
-                {
-                    // ОШИБКА или НЕОЖИДАННОЕ ПОВЕДЕНИЕ при чтении
-                    if (s == -1)
+                    ssize_t s = read(g_signalfd, &fdsi, sizeof(fdsi));
+
+                    // проверка на чтение всей структуры сигнала
+                    if (s == sizeof(fdsi))
                     {
-                        // Реальная ошибка чтения (EAGAIN не должно быть после poll,
-                        // но проверяем на всякий случай)
-                        if (errno != EAGAIN)
+                        // УСПЕХ: Прочитали ровно одну структуру siginfo
+                        // Теперь можно безопасно использовать данные в fdsi
+                        dispatch_signal(&fdsi); // Вызываем диспетчер
+                    }
+                    else
+                    {
+                        // ОШИБКА или НЕОЖИДАННОЕ ПОВЕДЕНИЕ при чтении
+                        if (s == -1)
                         {
-                            perror("[Signal Listener] read signalfd failed");
-                            // Возможно, стоит выйти при серьезной ошибке чтения
-                            // g_running = false;
-                            // break;
+                            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                            {
+                                // Это ожидаемо в неблокирующем режиме, значит, прочитали все сигналы
+                                printf("[Signal Listener] read EAGAIN/EWOULDBLOCK - finished reading pending signals.\n");
+                                break; // Выходим из цикла чтения read
+                            }
+                            else
+                            {
+                                // Другая ошибка чтения
+                                perror("[Signal Listener] read signalfd failed");
+                                // Возможно, стоит продолжить poll? Или выйти? Пока продолжаем.
+                                break; // Выходим из цикла чтения read
+                            }
                         }
-                        // Если EAGAIN, то это странно после poll, но можно проигнорировать
+                        else if (s >= 0)
+                        {
+                            // Прочитали неполную структуру? Очень маловероятно для signalfd.
+                            fprintf(stderr, "[Signal Listener] Unexpected read size %zd from signalfd (expected %zu)\n",
+                                    s, sizeof(fdsi));
+                            break;
+                        }
+                        // В любом случае ошибки или странного чтения,
+                        // не вызываем dispatch_signal и просто продолжаем цикл poll.
                     }
-                    else if (s >= 0)
-                    {
-                        // Прочитали неполную структуру? Очень маловероятно для signalfd.
-                        fprintf(stderr, "[Signal Listener] Unexpected read size %zd from signalfd (expected %zu)\n",
-                                s, sizeof(fdsi));
-                    }
-                    // В любом случае ошибки или странного чтения,
-                    // не вызываем dispatch_signal и просто продолжаем цикл poll.
                 }
             }
             else if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
@@ -296,31 +355,31 @@ bool setup_signal_handler()
     // поток-слушатель
     g_listener_tid = 0;
 
+    // маска сигналов
+    sigset_t mask;
     // сбрасываем множество
-    sigemptyset(&g_mask);
-
+    sigemptyset(&mask);
     // Добавляем все сигналы из нашей таблицы диспетчера
     printf("Blocking signals for signalfd: ");
     for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
     {
         printf("%d ", g_signal_dispatch_table[i].signo);
-        sigaddset(&g_mask, g_signal_dispatch_table[i].signo);
+        sigaddset(&mask, g_signal_dispatch_table[i].signo);
     }
-
     // блокируем добавленные сигналыы
-    if (pthread_sigmask(SIG_BLOCK, &g_mask, NULL) != 0)
+    if (pthread_sigmask(SIG_BLOCK, &mask, NULL) != 0)
+    // if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
     {
         perror("pthread_sigmask failed");
         return false;
     }
     printf("\nSignals blocked for default delivery.\n");
-
     // Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
-    g_signalfd = signalfd(-1, &g_mask, SFD_CLOEXEC | SFD_NONBLOCK);
+    g_signalfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
     if (g_signalfd == -1)
     {
         printf("Error: g_signalrd = -1\n");
-        pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL);
+        pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         return false;
     }
     printf("Signalfd created (fd=%d).\n", g_signalfd);
@@ -330,7 +389,7 @@ bool setup_signal_handler()
     {
         printf("Error: Signal listener thread hasnt started\n");
         close(g_signalfd);
-        pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL);
+        pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         return false;
     }
     printf("Signal listener thread started (TID: %lu).\n", (unsigned long)g_listener_tid);
@@ -1317,7 +1376,7 @@ void process_command(char *input)
 void cleanup_all()
 {
     printf("Cleaning up\n");
-    
+
     g_running = false;
     // завершаем поток обработки сигналов
     if (g_listener_tid != 0)
@@ -1356,11 +1415,11 @@ void cleanup_all()
     }
 
     // разблокируем сигналы
-    if (!pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL))
-        printf("Mask deleted\n");
-    else
-        perror("pthread_sigmask error while exiting");
-    
+    // if (!pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL))
+    //    printf("Mask deleted\n");
+    // else
+    //    perror("pthread_sigmask error while exiting");
+
     printf("Exiting\n");
 }
 

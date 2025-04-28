@@ -376,12 +376,13 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         INF("Data packed: (client_id=%d, sub_mem_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
 
         // Подготавливаем структуру kernel_siginfo
-         memset(&sig_info, 0, sizeof(struct kernel_siginfo));
-         sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
-         sig_info.si_code = SI_QUEUE;        // Указываем, что сигнал из ядра
+        clear_siginfo(&sig_info);
+        sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
+        sig_info.si_code = SI_QUEUE;        // Указываем, что сигнал из ядра
+                                 
         // Помещаем упакованные данные в поле si_int.
-         sig_info.si_int = (int)packed_cli_sub_id;
-         sig_info.si_errno = (int)conn->m_server_p->m_id;
+        sig_info.si_int = (int)packed_cli_sub_id;
+        sig_info.si_errno = (int)conn->m_server_p->m_id;
 
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
         mutex_lock(&conn->m_server_p->m_lock);
@@ -404,9 +405,9 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
             NEW_CONNECTION, conn->m_server_p->m_task_p->pid, packed_cli_sub_id, client->m_id, conn->m_mem_p->m_id);
         int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
 
-        //ret = send_signal_to_process(
-        //    conn->m_server_p->m_task_p->pid, NEW_CONNECTION,
-        //    (int)packed_cli_sub_id, (int)conn->m_server_p->m_id);
+        // ret = send_signal_to_process(
+        //     conn->m_server_p->m_task_p->pid, NEW_CONNECTION,
+        //     (int)packed_cli_sub_id, (int)conn->m_server_p->m_id);
 
         // устанавливаем флаг в значение: память отображена на сервере
         atomic_set(&conn->m_serv_mmaped, 1);
