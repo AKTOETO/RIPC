@@ -21,7 +21,7 @@
 #define MAX_HANDLED_SIGNALS 10 // Максимальное количество сигналов для обработки
 
 // --- Тип Указателя на Функцию-Обработчик Сигналов ---
-typedef void (*signal_handler_func_t)(const struct signalfd_siginfo *fdsi);
+typedef void (*notif_handler_func_t)(const struct notification_data *fdsi);
 
 // --- Структуры ---
 
@@ -29,7 +29,7 @@ typedef void (*signal_handler_func_t)(const struct signalfd_siginfo *fdsi);
 struct SignalDispatcher
 {
     int signo;                     // номер сигнала
-    signal_handler_func_t handler; // указатель на обработчик сигнала
+    notif_handler_func_t handler; // указатель на обработчик сигнала
 };
 
 // Информация о связи клиента и памяти
@@ -106,13 +106,13 @@ int g_dev_fd = -1;       // Глобальный файловый дескрип
 
 // --- обработчик сигналов ---
 // void signal_handler(int sig, siginfo_t *info, void *ucontext);
-// обработчик сигнала NEW_CONNECTION
-void handle_new_connection(const struct signalfd_siginfo *fdsi);
-// обработчик сигнала NEW_MESSAGE
-void handle_new_message(const struct signalfd_siginfo *fdsi);
+// обработчик уведомления NEW_CONNECTION
+void handle_new_connection(const struct notification_data *ntf);
+// обработчик уведомления NEW_MESSAGE
+void handle_new_message(const struct notification_data *ntf);
 
 // Функция поиска и вызова обработчика
-void dispatch_signal(const struct signalfd_siginfo *fdsi);
+void dispatch_signal(const struct notification_data *ntf);
 
 // --- Поток для Ожидания и Обработки Сигналов ---
 void *signal_listener_thread(void *arg);

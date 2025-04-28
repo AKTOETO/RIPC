@@ -10,7 +10,6 @@
 #include "server.h"
 #include "client.h"
 
-
 /**
  * Глобальные переменные
  */
@@ -111,10 +110,13 @@ struct reg_task_t
 
 // Создание зарегистрированного процесса
 struct reg_task_t *
-reg_task_create(struct task_struct *task);
+reg_task_create(void);
 
 // Удаление зарегистрированного процесса
 void reg_task_delete(struct reg_task_t *reg_task);
+
+// поиск по task_struct
+struct reg_task_t *reg_task_find_by_task_struct(struct task_struct *task);
 
 // добавление сервера
 void reg_task_add_server(struct reg_task_t *reg_task, struct server_t *serv);

@@ -100,6 +100,16 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -EFAULT;
         }
 
+        // регистрируем сервер в процессе
+        reg_task_add_server(reg_task, server);
+
+        if(!server->m_task_p)
+        {
+            ERR("Server's task ptr i NULL");
+            ret = -ENOENT;
+            break;
+        }
+
         INF("REGISTER_SERVER: New server is registered: (ID:%d) (NAME:%s) (PID:%d)",
             server->m_id, server->m_name, server->m_task_p->m_reg_task->m_task_p->pid);
         break;
@@ -115,6 +125,16 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         {
             ERR("REGISTER_CLIENT: cant sand back clients's id: %d", client->m_id);
             return -EFAULT;
+        }
+
+        // регистрируем клиент в процессе
+        reg_task_add_client(reg_task, client);
+
+        if(!client->m_task_p)
+        {
+            ERR("client's task ptr is NULL");
+            ret = -ENOENT;
+            break;
         }
 
         INF("REGISTER_CLIENT: New client is registered: (ID:%d) (PID:%d)",
@@ -466,7 +486,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         // int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
 
         // отправка уведомления
-        if((ret = notification_send(CLIENT, NEW_MESSAGE, conn)))
+        if((ret = notification_send(CLIENT, NEW_CONNECTION, conn)))
         {
             ERR("notification sending failed");
         }
@@ -588,7 +608,7 @@ found:
 static int ipc_open(struct inode *inode, struct file *filp)
 {
     INF("=== new open request ===");
-    struct reg_task_t *reg_task = reg_task_create(current);
+    struct reg_task_t *reg_task = reg_task_create();
 
     if (!reg_task)
     {
@@ -667,7 +687,7 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
 
 static __poll_t ipc_poll(struct file *filp, poll_table *wait)
 {
-    INF("=== new poll request ===");
+    //INF("=== new poll request ===");
     struct reg_task_t *reg_task = filp->private_data;
 
     if (!reg_task)

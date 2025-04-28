@@ -93,9 +93,10 @@ void delete_connection(struct connection_t *con)
 
     INF("deleting connection");
 
-    // Удаление сервера
+    // отсоединение от сервера
     if (con->m_server_p)
     {
+        
         struct serv_conn_list_t *cn = server_find_conn(con->m_server_p, con);
         if (!cn)
         {
@@ -104,18 +105,18 @@ void delete_connection(struct connection_t *con)
         else
         {
             cn->conn = NULL;
-            server_destroy(con->m_server_p);
+            //server_destroy(con->m_server_p);
         }
     }
 
-    // Удаление клиента
+    // отсоединение от клиента
     if (con->m_client_p)
     {
         con->m_client_p->m_conn_p = NULL;
-        client_destroy(con->m_client_p);
+        //client_destroy(con->m_client_p);
     }
 
-    // Удаление памяти
+    // отсоединение от памяти
     if (con->m_mem_p)
         submem_disconnect(con->m_mem_p, con);
 

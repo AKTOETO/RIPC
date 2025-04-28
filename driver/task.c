@@ -8,7 +8,6 @@
 LIST_HEAD(g_reg_task_list);
 DEFINE_MUTEX(g_reg_task_lock);
 
-
 struct notification_t *notification_create(
     enum notif_sender who_sends, enum notif_type type,
     int sub_mem_id, int sender_id, int reciver_id)
@@ -51,8 +50,8 @@ struct notification_t *notification_create(
     notif->data.m_type = type;
     INIT_LIST_HEAD(&notif->list);
 
-    INF("Created notif: (WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
-        who_sends, sub_mem_id, sender_id, reciver_id);
+    INF("Created notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
+        type, who_sends, sub_mem_id, sender_id, reciver_id);
 
     return notif;
 }
@@ -66,7 +65,8 @@ void notification_delete(struct notification_t *notif)
         return;
     }
 
-    INF("Deleting notif: (WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
+    INF("Deleting notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
+        notif->data.m_type,
         notif->data.m_who_sends,
         notif->data.m_sub_mem_id,
         notif->data.m_sender_id,
@@ -92,7 +92,7 @@ int notification_send(enum notif_sender sender,
     int sender_id, reciever_id;
     struct reg_task_t *reciever_task;
 
-    // определяем потправителя
+    // определяем отправителя
     switch (sender)
     {
     case CLIENT:
@@ -124,16 +124,19 @@ int notification_send(enum notif_sender sender,
     {
         switch (sender)
         {
+        // отправил клиент, то есть полцчатель будет сервер
         case CLIENT:
-            INF("Notification sent to client (ID:%d)(PID:%d)",
-                reciever_id,
-                reciever_task->m_task_p->pid);
-            break;
-        case SERVER:
             INF("Notification sent to server (ID:%d)(PID:%d)(NAME:%s)",
                 reciever_id,
                 reciever_task->m_task_p->pid,
                 con->m_server_p->m_name);
+            break;
+            // отправил сервер, то есть полцчатель будет клиент
+        case SERVER:
+            INF("Notification sent to client (ID:%d)(PID:%d)",
+                reciever_id,
+                reciever_task->m_task_p->pid);
+
             break;
         default:
             ERR("Undefined sender type: %d", sender);
@@ -230,14 +233,26 @@ void clients_list_t_delete(
     INF("Deleted clients_list_t");
 }
 
-struct reg_task_t *reg_task_create(struct task_struct *task)
+struct reg_task_t *reg_task_create(void)
 {
+    struct task_struct *task = current;
+
     // Проверка входных данных
     if (!task || !pid_alive(task))
     {
         ERR("Task ptr is NULL or dead");
         return NULL;
     }
+
+    // зарегистрирован ли уже этот процесс
+    if (reg_task_find_by_task_struct(task))
+    {
+        ERR("Task already registered (PID:%d)", task->pid);
+        return NULL;
+    }
+
+    // увеличиваем счётчик ссылок
+    get_task_struct(task);
 
     // выделение и проверка памяти
     struct reg_task_t *reg_task = kmalloc(sizeof(*reg_task), GFP_KERNEL);
@@ -276,7 +291,11 @@ void reg_task_delete(struct reg_task_t *reg_task)
     }
 
     if (reg_task->m_task_p && pid_alive(reg_task->m_task_p))
+    {
         INF("Destroying reg_task (PID:%d)", reg_task->m_task_p->pid);
+        put_task_struct(reg_task->m_task_p);
+        reg_task->m_task_p = NULL;
+    }
     else
         INF("Destroying reg_task (PID:DEAD)");
 
@@ -287,10 +306,14 @@ void reg_task_delete(struct reg_task_t *reg_task)
     // удаляем список серверов
     if (!list_empty(&reg_task->m_servers))
     {
+        INF("Deleteing servers");
         struct servers_list_t *srv, *srv_tmp;
         list_for_each_entry_safe(srv, srv_tmp, &reg_task->m_servers, list)
         {
-            server_destroy(srv->m_server);
+            if (srv->m_server)
+                server_destroy(srv->m_server);
+            else
+                ERR("Empty server ptr");
             servers_list_t_delete(srv);
         }
     }
@@ -298,10 +321,14 @@ void reg_task_delete(struct reg_task_t *reg_task)
     // удаляем список клиентов
     if (!list_empty(&reg_task->m_clients))
     {
+        INF("Deleteing clients");
         struct clients_list_t *cli, *cli_tmp;
         list_for_each_entry_safe(cli, cli_tmp, &reg_task->m_clients, list)
         {
-            client_destroy(cli->m_client);
+            if (cli->m_client)
+                client_destroy(cli->m_client);
+            else
+                ERR("Empty client ptr");
             clients_list_t_delete(cli);
         }
     }
@@ -309,6 +336,7 @@ void reg_task_delete(struct reg_task_t *reg_task)
     // удаляем список уведомлений
     if (!list_empty(&reg_task->m_notif_list))
     {
+        INF("Deleteing notifications");
         struct notification_t *notif, *notif_tmp;
         list_for_each_entry_safe(notif, notif_tmp, &reg_task->m_notif_list, list)
         {
@@ -322,6 +350,30 @@ void reg_task_delete(struct reg_task_t *reg_task)
     mutex_unlock(&g_reg_task_lock);
 
     kfree(reg_task);
+}
+
+struct reg_task_t *reg_task_find_by_task_struct(struct task_struct *task)
+{
+    if (!task || !pid_alive(task))
+    {
+        ERR("Task ptr is NULL or dead");
+        return NULL;
+    }
+
+    struct reg_task_t *entr = NULL;
+
+    mutex_lock(&g_reg_task_lock);
+    list_for_each_entry(entr, &g_reg_task_list, list)
+    {
+        if (entr->m_task_p == task)
+        {
+            mutex_unlock(&g_reg_task_lock);
+            return entr;
+        }
+    }
+    mutex_unlock(&g_reg_task_lock);
+
+    return NULL;
 }
 
 void reg_task_add_server(
@@ -348,7 +400,8 @@ void reg_task_add_server(
     // server_t -> servers_list_t
     server_add_task(serv, srv_entry);
 
-    INF("Server added to task");
+    INF("Server (ID:%d)(NAME:%s) added to task (PID:%d)",
+        serv->m_id, serv->m_name, reg_task->m_task_p->pid);
 }
 
 void reg_task_add_client(
@@ -375,7 +428,7 @@ void reg_task_add_client(
     // client_t -> clients_list_t
     client_add_task(cli, cli_entry);
 
-    INF("Client added to task");
+    INF("Client (ID:%d) added to task (PID:%d)", cli->m_id, reg_task->m_task_p->pid);
 }
 
 int reg_task_add_notification(
@@ -390,7 +443,7 @@ int reg_task_add_notification(
     INF("Adding new notification to task (PID:%d)", reg_task->m_task_p->pid);
 
     list_add(&reg_task->m_notif_list, &notif->list);
-    
+
     reg_task_notify_all(reg_task);
     return 0;
 }

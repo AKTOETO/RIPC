@@ -3,20 +3,15 @@
 #include <poll.h>  // pollfd
 #include <pthread.h>
 
-// // маска для обработки конкретных сигналов
-// sigset_t g_mask;
 // поток-слушатель
 pthread_t g_listener_tid = 0;
 
 // --- Функции-Обработчики для Конкретных Сигналов ---
-void handle_new_connection(const struct signalfd_siginfo *fdsi)
+void handle_new_connection(const struct notification_data *ntf)
 {
-    u32 packed_id = fdsi->ssi_int;    // Предполагаем: data1 = client_id
-    pid_t sender_pid = fdsi->ssi_pid; // PID клиента (или кто инициировал)
-
-    int client_id = unpack_id1(packed_id);
-    int submem_id = unpack_id2(packed_id);
-    int server_id = fdsi->ssi_errno;
+    int client_id = ntf->m_sender_id;  // unpack_id1(packed_id);
+    int submem_id = ntf->m_sub_mem_id; // unpack_id2(packed_id);
+    int server_id = ntf->m_reciver_id;
 
     // проверка id сервера
     if (!IS_ID_VALID(server_id))
@@ -26,7 +21,6 @@ void handle_new_connection(const struct signalfd_siginfo *fdsi)
     }
 
     printf("\n--- [Handler NEW_CONNECTION in Thread %lu] ---\n", (unsigned long)pthread_self());
-    printf("  Received from PID: %d\n", sender_pid);
     printf("  Client ID:         %d\n", client_id);
     printf("  Server ID:         %d\n", server_id);
     printf("  Submem ID:         %d\n", submem_id);
@@ -43,88 +37,140 @@ void handle_new_connection(const struct signalfd_siginfo *fdsi)
     server_add_connection(srv, client_id, submem_id);
 }
 
-void handle_new_message(const struct signalfd_siginfo *fdsi)
+void handle_new_message(const struct notification_data *ntf)
 {
-    u32 packed_id = (u32)fdsi->ssi_int; // Предполагаем: data1 = packed_id
-    pid_t sender_pid = fdsi->ssi_pid;
+    // u32 packed_id = (u32)fdsi->ssi_int; // Предполагаем: data1 = packed_id
+    // pid_t sender_pid = fdsi->ssi_pid;
 
     printf("\n--- [Handler NEW_MESSAGE in Thread %lu] ---\n", (unsigned long)pthread_self());
-    printf("  Received from PID: %d\n", sender_pid);
-    printf("  Packed ID:         %d\n", packed_id);
-    printf("--------------------------------------------\n");
+    // printf("  Received from PID: %d\n", sender_pid);
+    // printf("  Packed ID:         %d\n", packed_id);
+    // printf("--------------------------------------------\n");
     printf("> ");
     fflush(stdout);
 
-    // получение id
-    int serv_cli_id = unpack_id1(packed_id);
-    int sub_mem_id = unpack_id2(packed_id);
+    int sub_mem_id = ntf->m_sub_mem_id;
 
-    // если это сервер
-    if (sub_mem_id != 0)
+    // разбор по типу
+    switch (ntf->m_who_sends)
     {
+    // отправил клиент, то есть сейчас мы в сервере
+    case CLIENT:
+        int server_id = ntf->m_reciver_id;
+
         // поиск сервера
-        struct ServerInstance *srv = find_server_by_driver_id(serv_cli_id);
+        struct ServerInstance *srv = find_server_by_driver_id(server_id);
         if (!srv)
         {
-            printf("Error: cant find server (ID:%d)\n", serv_cli_id);
+            printf("Error: cant find server (ID:%d)\n", server_id);
             return;
         }
 
         struct ServerShmMapping *submem = server_find_submem_by_id(srv, sub_mem_id);
         if (!submem)
         {
-            printf("Error: No submem (ID:%d) in server (ID:%d)\n", sub_mem_id, serv_cli_id);
+            printf("Error: No submem (ID:%d) in server (ID:%d)\n", sub_mem_id, server_id);
             return;
         }
         // получение сообщения для сервера
         if (!server_read(srv, submem, 0, SHM_REGION_PAGE_SIZE))
         {
-            printf("Error: cant read from server (ID:%d) and submem(ID:%d)\n", serv_cli_id, sub_mem_id);
+            printf("Error: cant read from server (ID:%d) and submem(ID:%d)\n", server_id, sub_mem_id);
             return;
         }
-        printf("Msg red in server (ID:%d)\n", serv_cli_id);
-    }
-    // это клиент
-    else
-    {
+        printf("Msg red in server (ID:%d)\n", server_id);
+        break;
+
+        // отправил сервер, то есть сейчас мы в клиенте
+    case SERVER:
+
+        int client_id = ntf->m_reciver_id;
+
         // поиск клиента
-        struct ClientInstance *cli = find_client_instance(serv_cli_id);
+        struct ClientInstance *cli = find_client_instance(client_id);
         if (!cli)
         {
-            printf("Error: cant find client (ID:%d)\n", serv_cli_id);
+            printf("Error: cant find client (ID:%d)\n", client_id);
             return;
         }
 
         if (!client_read(cli, 0, SHM_REGION_PAGE_SIZE))
         {
-            printf("Error: cant read from client (ID:%d)\n", serv_cli_id);
+            printf("Error: cant read from client (ID:%d)\n", client_id);
             return;
         }
-        printf("Msg red in client (ID:%d)\n", serv_cli_id);
+        printf("Msg red in client (ID:%d)\n", client_id);
+
+        break;
+
+    default:
+        printf("[handler NEW_MESSAGE] ERROR: Unknown sender %d", ntf->m_who_sends);
     }
+
+    // если это сервер
+    // if (sub_mem_id != 0)
+    // {
+    //     // поиск сервера
+    //     struct ServerInstance *srv = find_server_by_driver_id(serv_cli_id);
+    //     if (!srv)
+    //     {
+    //         printf("Error: cant find server (ID:%d)\n", serv_cli_id);
+    //         return;
+    //     }
+
+    //     struct ServerShmMapping *submem = server_find_submem_by_id(srv, sub_mem_id);
+    //     if (!submem)
+    //     {
+    //         printf("Error: No submem (ID:%d) in server (ID:%d)\n", sub_mem_id, serv_cli_id);
+    //         return;
+    //     }
+    //     // получение сообщения для сервера
+    //     if (!server_read(srv, submem, 0, SHM_REGION_PAGE_SIZE))
+    //     {
+    //         printf("Error: cant read from server (ID:%d) and submem(ID:%d)\n", serv_cli_id, sub_mem_id);
+    //         return;
+    //     }
+    //     printf("Msg red in server (ID:%d)\n", serv_cli_id);
+    // }
+    // это клиент
+    // else
+    // {
+    //     // поиск клиента
+    //     struct ClientInstance *cli = find_client_instance(serv_cli_id);
+    //     if (!cli)
+    //     {
+    //         printf("Error: cant find client (ID:%d)\n", serv_cli_id);
+    //         return;
+    //     }
+
+    //     if (!client_read(cli, 0, SHM_REGION_PAGE_SIZE))
+    //     {
+    //         printf("Error: cant read from client (ID:%d)\n", serv_cli_id);
+    //         return;
+    //     }
+    //     printf("Msg red in client (ID:%d)\n", serv_cli_id);
+    // }
 }
 
 // Функция поиска и вызова обработчика
-void dispatch_signal(const struct signalfd_siginfo *fdsi)
+void dispatch_signal(const struct notification_data *ntf)
 {
     // Добавляем отладочный вывод перед циклом
-    printf("[Dispatcher] Received signal (signo=%d, code=%d, pid=%d, uid=%d, int=%d, errno=%d)\n",
-           (int)fdsi->ssi_signo, (int)fdsi->ssi_code, (int)fdsi->ssi_pid, (int)fdsi->ssi_uid,
-           fdsi->ssi_int, fdsi->ssi_errno); // si_errno для второго числа
+    printf("[Dispatcher] Received signal \n");
 
     for (int i = 0; g_signal_dispatch_table[i].handler != NULL; ++i)
     {
         // Добавляем отладочный вывод внутри цикла
-        // printf("[Dispatcher] Checking table entry %d: signo=%d\n", i, g_signal_dispatch_table[i].signo);
-        if (g_signal_dispatch_table[i].signo == (int)fdsi->ssi_signo)
+        printf("[Dispatcher] Checking table entry %d: signo=%d\n", i, g_signal_dispatch_table[i].signo);
+        if (g_signal_dispatch_table[i].signo == ntf->m_type)
         {
-            printf("[Dispatcher] Found handler for signal %d at index %d. Calling handler...\n", fdsi->ssi_signo, i);
-            g_signal_dispatch_table[i].handler(fdsi);
+            printf("[Dispatcher] Found handler for signal %d at index %d. Calling handler...\n", ntf->m_type, i);
+            g_signal_dispatch_table[i].handler(ntf);
             return; // Обработали, выходим
         }
     }
     // Если обработчик не найден
-    printf("[Dispatcher] Warning: No handler found for signal %d\n", fdsi->ssi_signo);
+    printf("[Dispatcher] Warning: No handler found for signal %d\n", ntf->m_type);
     printf("> ");
     fflush(stdout);
 }
@@ -136,26 +182,26 @@ void *signal_listener_thread(void *arg)
     printf("[Signal Listener]: Thread %lu started.\n", (unsigned long)pthread_self());
 
     // маска сигналов
-    sigset_t mask;
+    // sigset_t mask;
 
     // сбрасываем множество
-    sigemptyset(&mask);
+    // sigemptyset(&mask);
 
     // Добавляем все сигналы из нашей таблицы диспетчера
-    printf("[Signal Listener]: Blocking signals for signalfd: ");
-    for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
-    {
-        printf("%d ", g_signal_dispatch_table[i].signo);
-        sigaddset(&mask, g_signal_dispatch_table[i].signo);
-    }
+    // printf("[Signal Listener]: Blocking signals for signalfd: ");
+    // for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
+    // {
+    //     printf("%d ", g_signal_dispatch_table[i].signo);
+    //     sigaddset(&mask, g_signal_dispatch_table[i].signo);
+    // }
 
-    // блокируем добавленные сигналыы
-    if (pthread_sigmask(SIG_SETMASK, &mask, NULL) != 0)
-    {
-        perror("[Signal Listener]: pthread_sigmask failed");
-        return false;
-    }
-    printf("\n[Signal Listener]: Signals blocked for default delivery.\n");
+    // // блокируем добавленные сигналыы
+    // if (pthread_sigmask(SIG_SETMASK, &mask, NULL) != 0)
+    // {
+    //     perror("[Signal Listener]: pthread_sigmask failed");
+    //     return false;
+    // }
+    // printf("\n[Signal Listener]: Signals blocked for default delivery.\n");
 
     //// Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
     //// g_signalfd = signalfd(-1, &mask, 0);
@@ -171,13 +217,13 @@ void *signal_listener_thread(void *arg)
     struct pollfd pfd;
 
     // Проверяем валидность g_signalfd перед использованием
-    if (g_signalfd <= 0)
-    {
-        fprintf(stderr, "[Signal Listener] Error: Invalid signalfd (%d). Thread exiting.\n", g_signalfd);
-        return NULL;
-    }
+    // if (g_signalfd <= 0)
+    //{
+    //    fprintf(stderr, "[Signal Listener] Error: Invalid signalfd (%d). Thread exiting.\n", g_signalfd);
+    //    return NULL;
+    //}
 
-    pfd.fd = g_signalfd;
+    pfd.fd = g_dev_fd;
     pfd.events = POLLIN; // Ждем только событие чтения
     // pfd.revents = 0;
 
@@ -218,20 +264,20 @@ void *signal_listener_thread(void *arg)
             {
                 printf("[Signal listener] Got a new IN signal\n");
 
-                // Дескриптор готов к чтению
-                struct signalfd_siginfo fdsi;
+                // информация об уведомлении
+                struct notification_data ntf;
 
-                // читаем все ожидающие сигналы, пока не вернется EAGAIN
+                // читаем все ожидающие сигналы
                 while (1)
                 {
-                    ssize_t s = read(g_signalfd, &fdsi, sizeof(fdsi));
+                    ssize_t s = read(g_dev_fd, &ntf, sizeof(ntf));
 
                     // проверка на чтение всей структуры сигнала
-                    if (s == sizeof(fdsi))
+                    if (s == sizeof(ntf))
                     {
                         // УСПЕХ: Прочитали ровно одну структуру siginfo
                         // Теперь можно безопасно использовать данные в fdsi
-                        dispatch_signal(&fdsi); // Вызываем диспетчер
+                        dispatch_signal(&ntf); // Вызываем диспетчер
                     }
                     else
                     {
@@ -247,29 +293,21 @@ void *signal_listener_thread(void *arg)
                             else
                             {
                                 // Другая ошибка чтения
-                                perror("[Signal Listener] read signalfd failed");
+                                perror("[Signal Listener] read failed");
                                 // Возможно, стоит продолжить poll? Или выйти? Пока продолжаем.
                                 break; // Выходим из цикла чтения read
                             }
                         }
                         else if (s >= 0)
                         {
-                            // Прочитали неполную структуру? Очень маловероятно для signalfd.
-                            fprintf(stderr, "[Signal Listener] Unexpected read size %zd from signalfd (expected %zu)\n",
-                                    s, sizeof(fdsi));
+                            fprintf(stderr, "[Signal Listener] Unexpected read size %zd (expected %zu)\n",
+                                    s, sizeof(ntf));
                             break;
                         }
                         // В любом случае ошибки или странного чтения,
                         // не вызываем dispatch_signal и просто продолжаем цикл poll.
                     }
                 }
-            }
-            else if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
-            {
-                // Ошибка на самом дескрипторе signalfd
-                fprintf(stderr, "[Signal Listener] Error event 0x%x on signalfd.\n", pfd.revents);
-                g_running = false; // Выход при ошибке дескриптора
-                break;
             }
             else
             {
@@ -353,43 +391,43 @@ bool setup_signal_handler()
     printf("Initializing signal subsystem\n");
 
     // поток-слушатель
-    g_listener_tid = 0;
+    // g_listener_tid = 0;
 
     // маска сигналов
-    sigset_t mask;
+    // sigset_t mask;
     // сбрасываем множество
-    sigemptyset(&mask);
-    // Добавляем все сигналы из нашей таблицы диспетчера
-    printf("Blocking signals for signalfd: ");
-    for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
-    {
-        printf("%d ", g_signal_dispatch_table[i].signo);
-        sigaddset(&mask, g_signal_dispatch_table[i].signo);
-    }
-    // блокируем добавленные сигналыы
-    if (pthread_sigmask(SIG_BLOCK, &mask, NULL) != 0)
-    // if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
-    {
-        perror("pthread_sigmask failed");
-        return false;
-    }
-    printf("\nSignals blocked for default delivery.\n");
-    // Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
-    g_signalfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
-    if (g_signalfd == -1)
-    {
-        printf("Error: g_signalrd = -1\n");
-        pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
-        return false;
-    }
-    printf("Signalfd created (fd=%d).\n", g_signalfd);
+    // sigemptyset(&mask);
+    //// Добавляем все сигналы из нашей таблицы диспетчера
+    // printf("Blocking signals for signalfd: ");
+    // for (int i = 0; g_signal_dispatch_table[i].handler != NULL && i < MAX_HANDLED_SIGNALS; ++i)
+    //{
+    //     printf("%d ", g_signal_dispatch_table[i].signo);
+    //     sigaddset(&mask, g_signal_dispatch_table[i].signo);
+    // }
+    //// блокируем добавленные сигналыы
+    // if (pthread_sigmask(SIG_BLOCK, &mask, NULL) != 0)
+    //// if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
+    //{
+    //    perror("pthread_sigmask failed");
+    //    return false;
+    //}
+    // printf("\nSignals blocked for default delivery.\n");
+    //// Создаем signalfd для ЗАБЛОКИРОВАННЫХ сигналов
+    // g_signalfd = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
+    // if (g_signalfd == -1)
+    //{
+    //     printf("Error: g_signalrd = -1\n");
+    //     pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+    //     return false;
+    // }
+    // printf("Signalfd created (fd=%d).\n", g_signalfd);
 
     // Запускаем поток-слушатель
     if (pthread_create(&g_listener_tid, NULL, signal_listener_thread, NULL) != 0)
     {
         printf("Error: Signal listener thread hasnt started\n");
         close(g_signalfd);
-        pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
+        // pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         return false;
     }
     printf("Signal listener thread started (TID: %lu).\n", (unsigned long)g_listener_tid);
@@ -1407,12 +1445,12 @@ void cleanup_all()
     }
 
     // закрытие файлового дескриптора сигналов
-    if (g_signalfd != -1)
-    {
-        close(g_signalfd);
-        g_signalfd = -1;
-        printf("Signalfd closed\n");
-    }
+    //if (g_signalfd != -1)
+    //{
+    //    close(g_signalfd);
+    //    g_signalfd = -1;
+    //    printf("Signalfd closed\n");
+    //}
 
     // разблокируем сигналы
     // if (!pthread_sigmask(SIG_UNBLOCK, &g_mask, NULL))
@@ -1430,7 +1468,7 @@ int main()
     // bool running = true;
 
     initialize_instances();
-    if (!setup_signal_handler() || !open_device())
+    if (!open_device() || !setup_signal_handler())
     {
         return 1;
     }
