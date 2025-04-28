@@ -2,7 +2,7 @@
 obj-m += dripc.o
 
 # объектные файлы для сборки модуля
-dripc-y := id.o connection.o client.o server.o shm.o main.o sigs.o
+dripc-y := id.o connection.o task.o client.o server.o shm.o main.o
 
 # Добавляем каталог include
 #EXTRA_CFLAGS += -I$(CURDIR)/../include

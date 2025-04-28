@@ -3,6 +3,8 @@
 #include "id.h"
 #include "ripc.h"
 #include "connection.h"
+//#include "task.h"
+
 #include <linux/list.h>
 
 /**
@@ -12,8 +14,8 @@
 struct server_t
 {
     char m_name[MAX_SERVER_NAME];
-    int m_id;                     // id клиента в процессе
-    struct task_struct *m_task_p; // указатель на задачу, где зарегистрирован сервер
+    int m_id;                    // id клиента в процессе
+    struct servers_list_t* m_task_p; // указатель на задачу, где зарегистрирован сервер
     struct serv_conn_list_t
     {
         struct connection_t *conn; // указатель на соединение
@@ -28,15 +30,15 @@ struct server_t
 extern struct list_head g_servers_list;
 extern struct mutex g_servers_lock;
 
-// генератор id для списка серверов
-// extern struct ida g_servers_id_gen;
-
 /**
- * Операции над объектом соединения
+ * Операции над сервером
  */
 
 // создание сервера
 struct server_t *server_create(const char *name);
+
+// прикрепление к определенному процессу
+void server_add_task(struct server_t *srv, struct servers_list_t*task);
 
 // удаление сервера
 void server_destroy(struct server_t *srv);
@@ -63,6 +65,10 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
 // поиск соединения с необходимой памятью
 struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
     struct server_t *srv, int sub_mem_id);
+
+// поиск соединения по глобальной структуре соединения
+struct serv_conn_list_t *server_find_conn(
+    struct server_t *srv, struct connection_t *con);
 
 /**
  * Операции над глобальным списком серверов

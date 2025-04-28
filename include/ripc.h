@@ -3,7 +3,7 @@
 
 #include <linux/ioctl.h>
 
-#ifndef PAGE_SIZE
+#ifndef __KERNEL__
 #define PAGE_SIZE 4096
 #endif
 
@@ -25,21 +25,55 @@
 #define SHM_POOL_BYTE_SIZE (SHM_REGION_PAGE_SIZE * SHM_POOL_SIZE)     // Размер пула памяти в байтах
 
 /**
+ * NOTIFICATION
+ */
+
+ // --- Типы отправителя ---
+enum notif_sender
+{
+    SENDER_MIN,
+    SERVER,
+    CLIENT,
+    SENDER_MAX
+};
+#define IS_NTF_SEND_VALID(sender) (sender > SENDER_MIN && sender < SENDER_MAX)
+
+// --- Типы сигналов ---
+enum notif_type
+{
+    TYPE_MIN,
+    NEW_CONNECTION,
+    NEW_MESSAGE,
+    TYPE_MAX
+};
+#define IS_NTF_TYPE_VALID(sender) (sender > TYPE_MIN && sender < TYPE_MAX)
+
+// Данные уведомления
+struct notification_data
+{
+    short m_who_sends; // кто отправитель: 1-сервер; 0-клиент
+    short m_type;      // тип сигнала
+    int m_sub_mem_id;
+    int m_sender_id;
+    int m_reciver_id;
+};
+
+/**
  * SIGNALS
  */
 
 // Значения взяты из диапазона сигналов реального времени 34-63
 // сигнал для обозначения нового подколючения к серверу
-#define NEW_CONNECTION 40//(SIGRTMIN + 0)// 40
+// #define NEW_CONNECTION 40 //(SIGRTMIN + 0)// 40
 // сигнал для обозначения новго сообщения для сервера или для клиента
-#define NEW_MESSAGE 41//(SIGRTMIN + 1)//41
+// #define NEW_MESSAGE 41 //(SIGRTMIN + 1)//41
 
 // SIGNAL NEW_CONNECTION
-struct new_connection
-{
-    int client_pid;
-    int client_id;
-};
+// struct new_connection
+// {
+//     int client_pid;
+//     int client_id;
+// };
 
 /**
  * IOCTL data for commands

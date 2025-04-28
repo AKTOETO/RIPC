@@ -180,16 +180,24 @@ void submem_clear(struct sub_mem_t *sub)
     free_id(&g_id_gen, sub->m_id);
 }
 
-void submem_return(struct sub_mem_t *sub)
+int submem_disconnect(struct sub_mem_t *sub, struct connection_t* con)
 {
-    if (!sub)
+    if (!sub || !con)
     {
-        ERR("There is not submem");
-        return;
+        ERR("There is not submem or con");
+        return 0;
+    }
+
+    if(con != sub->m_conn_p)
+    {
+        ERR("not the same connection was passed");
+        return -1;
     }
 
     // отключение от соединения
     sub->m_conn_p = NULL;
+
+    return 0;
 }
 
 /**

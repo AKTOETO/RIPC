@@ -12,7 +12,6 @@
 /**
  * Структура, описывающая соединение клиента и сервера
  */
-
 struct connection_t
 {
     struct client_t *m_client_p;

@@ -2,6 +2,7 @@
 #include "client.h"
 #include "err.h"
 #include "shm.h"
+#include "task.h"
 
 #include <linux/mm.h>     // операции с памятью
 #include <linux/string.h> // операции над строками
@@ -25,7 +26,7 @@ struct server_t *server_create(const char *name)
         return NULL;
     }
 
-    // выделние и проверка памяти
+    // выделение и проверка памяти
     struct server_t *srv = kmalloc(sizeof(*srv), GFP_KERNEL);
     if (!srv)
     {
@@ -37,7 +38,7 @@ struct server_t *server_create(const char *name)
     strscpy(srv->m_name, name, MAX_SERVER_NAME);
     srv->m_id = generate_id(&g_id_gen);
     INIT_LIST_HEAD(&srv->connection_list.list);
-    srv->m_task_p = current;
+    srv->m_task_p = NULL; 
 
     // инициализация блокировок
     mutex_init(&srv->m_lock);
@@ -53,6 +54,27 @@ struct server_t *server_create(const char *name)
     return srv;
 }
 
+void server_add_task(struct server_t *srv, struct servers_list_t* task)
+{
+    if (!srv || !task)
+    {
+        ERR("empty param");
+        return;
+    }
+
+    // если уже сервер подключен к кому-то,
+    // то нельзя его переподключить
+    if (srv->m_task_p)
+    {
+        ERR("Server already connected to task (PID:%d)",
+            srv->m_task_p->m_reg_task->m_task_p->pid);
+        return;
+    }
+
+    // подключаем сервер
+    srv->m_task_p = task;
+}
+
 // удаление сервера
 void server_destroy(struct server_t *srv)
 {
@@ -63,7 +85,8 @@ void server_destroy(struct server_t *srv)
         return;
     }
 
-    INF("Destroying server (ID:%d)(PID:%d)(NAME:%s)", srv->m_id, srv->m_task_p->pid, srv->m_name);
+    INF("Destroying server (ID:%d)(PID:%d)(NAME:%s)", 
+        srv->m_id, srv->m_task_p->m_reg_task->m_task_p->pid, srv->m_name);
 
     // для безопасного удаления
     struct serv_conn_list_t *con, *tmp;
@@ -72,6 +95,9 @@ void server_destroy(struct server_t *srv)
     mutex_lock(&srv->m_con_list_lock);
     list_for_each_entry_safe(con, tmp, &srv->connection_list.list, list)
     {
+        // удаляем соединение сервера
+        server_delete_connection(srv, con);
+
         // удаление из списка подключенных клиентов к серверу
         list_del(&con->list);
 
@@ -122,10 +148,10 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     // Итерируемся по списку клиентов
     list_for_each_entry(server, &g_servers_list, list)
     {
-        if (server->m_task_p && server->m_task_p->pid == pid && server->m_id == id)
+        if (server->m_task_p && server->m_task_p->m_reg_task->m_task_p->pid == pid && server->m_id == id)
         {
             INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
-                server->m_id, server->m_task_p->pid, server->m_name);
+                server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
             mutex_unlock(&g_servers_lock);
             // Нашли совпадение - сохраняем результат
             return server;
@@ -155,8 +181,9 @@ struct client_t *find_client_by_task_from_server(
     // Итерируемся по списку подключений
     list_for_each_entry(conn, &serv->connection_list.list, list)
     {
-        INF("\tcomapre connected PID: %d and requested PID: %d", task->pid, conn->conn->m_client_p->m_task_p->pid);
-        if (conn->conn->m_client_p->m_task_p == task)
+        INF("\tcomapre connected PID: %d and requested PID: %d",
+            task->pid, conn->conn->m_client_p->m_task_p->m_reg_task->m_task_p->pid);
+        if (conn->conn->m_client_p->m_task_p->m_reg_task->m_task_p == task)
         {
             // Нашли совпадение - сохраняем результат
             mutex_unlock(&serv->m_con_list_lock);
@@ -171,8 +198,8 @@ struct client_t *find_client_by_task_from_server(
 int connect_client_to_server(struct server_t *server, struct client_t *client)
 {
     INF("Connecting client (ID:%d)(PID:%d) to server (ID:%d)(PID:%d)",
-        client->m_id, client->m_task_p->pid, server->m_id, server->m_task_p->pid);
-
+        client->m_id, client->m_task_p->m_reg_task->m_task_p->pid,
+        server->m_id, server->m_task_p->m_reg_task->m_task_p->pid);
 
     // ищем свободную подобласть памяти
     struct sub_mem_t *sub = get_free_submem();
@@ -237,24 +264,29 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
         return;
     }
 
-    // глобальная блокировка серверов для добавления в список соединений
-    mutex_lock(&srv->m_con_list_lock);
+    // глобальная блокировка серверов для удаления подключения
+    // mutex_lock(&srv->m_con_list_lock);
     list_del(&con->list);
-    delete_connection(con->conn);
+    if (con->conn)
+    {
+        con->conn->m_server_p = NULL;
+        delete_connection(con->conn);
+    }
     kfree(con);
-    mutex_unlock(&srv->m_con_list_lock);
+    // mutex_unlock(&srv->m_con_list_lock);
 }
 
 struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
     struct server_t *srv, int sub_mem_id)
 {
     // проверяем входные данные
-    if (!IS_ID_VALID(sub_mem_id))
+    if (!srv || !IS_ID_VALID(sub_mem_id))
     {
         ERR("Invalid input params");
         return NULL;
     }
-    INF("Finding connection in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)", srv->m_id, srv->m_name, sub_mem_id);
+    INF("Finding connection in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)",
+        srv->m_id, srv->m_name, sub_mem_id);
 
     // соединение с клиентом и памятью
     struct serv_conn_list_t *conn = NULL;
@@ -272,6 +304,36 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
     }
     mutex_unlock(&srv->m_con_list_lock);
     INF("Connection not found in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)", srv->m_id, srv->m_name, sub_mem_id);
+    return NULL;
+}
+
+struct serv_conn_list_t *server_find_conn(
+    struct server_t *srv, struct connection_t *con)
+{
+    // проверяем входные данные
+    if (!srv || !con)
+    {
+        ERR("Invalid input params");
+        return NULL;
+    }
+    INF("Finding connection in server (ID: %d)(NAME: %s)", srv->m_id, srv->m_name);
+
+    // соединение с клиентом и памятью
+    struct serv_conn_list_t *conn = NULL;
+
+    mutex_lock(&srv->m_con_list_lock);
+    // Итерируемся по списку подключений
+    list_for_each_entry(conn, &srv->connection_list.list, list)
+    {
+        if (conn->conn && conn->conn == con)
+        {
+            // Нашли совпадение - сохраняем результат
+            mutex_unlock(&srv->m_con_list_lock);
+            return conn;
+        }
+    }
+    mutex_unlock(&srv->m_con_list_lock);
+    INF("Connection not found in server (ID: %d)(NAME: %s)", srv->m_id, srv->m_name);
     return NULL;
 }
 

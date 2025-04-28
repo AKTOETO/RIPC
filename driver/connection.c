@@ -2,6 +2,7 @@
 #include "err.h"
 
 #include <linux/mm.h>
+#include "task.h"
 
 // Список соединений и его блокировка
 LIST_HEAD(g_conns_list);
@@ -13,7 +14,7 @@ struct connection_t *create_connection(
     struct server_t *server,
     struct sub_mem_t *mem)
 {
-    if(!client || !server || !mem)
+    if (!client || !server || !mem)
     {
         ERR("Client or server or mem pointer is NULL");
         return NULL;
@@ -64,7 +65,10 @@ struct connection_t *find_connection(
     mutex_lock(&g_conns_lock);
     list_for_each_entry(con, &g_conns_list, list)
     {
-        if ((con->m_client_p->m_task_p == task1 && con->m_server_p->m_task_p == task2) || (con->m_client_p->m_task_p == task2 && con->m_server_p->m_task_p == task1))
+        if ((con->m_client_p->m_task_p->m_reg_task->m_task_p == task1 &&
+             con->m_server_p->m_task_p->m_reg_task->m_task_p == task2) ||
+            (con->m_client_p->m_task_p->m_reg_task->m_task_p == task2 &&
+             con->m_server_p->m_task_p->m_reg_task->m_task_p == task1))
         {
             INF("FOUND connection");
             mutex_unlock(&g_conns_lock);
@@ -88,6 +92,32 @@ void delete_connection(struct connection_t *con)
     }
 
     INF("deleting connection");
+
+    // Удаление сервера
+    if (con->m_server_p)
+    {
+        struct serv_conn_list_t *cn = server_find_conn(con->m_server_p, con);
+        if (!cn)
+        {
+            ERR("Server's connection has not connection ptr");
+        }
+        else
+        {
+            cn->conn = NULL;
+            server_destroy(con->m_server_p);
+        }
+    }
+
+    // Удаление клиента
+    if (con->m_client_p)
+    {
+        con->m_client_p->m_conn_p = NULL;
+        client_destroy(con->m_client_p);
+    }
+
+    // Удаление памяти
+    if (con->m_mem_p)
+        submem_disconnect(con->m_mem_p, con);
 
     // удаление из общего списка
     mutex_lock(&g_conns_lock);
