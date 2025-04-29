@@ -167,7 +167,7 @@ struct client_t *find_client_by_id_pid(int id, pid_t pid)
     // Итерируемся по списку клиентов
     list_for_each_entry(client, &g_clients_list, list)
     {
-        if (client->m_task_p->m_reg_task->m_task_p->pid == pid &&
+        if (/*client->m_task_p->m_reg_task->m_task_p->pid == pid &&*/
             client->m_id == id)
         {
             INF("FOUND client (ID:%d)(PID:%d)",

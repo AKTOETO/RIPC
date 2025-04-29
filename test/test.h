@@ -4,14 +4,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/signalfd.h> // длябоработки сигналов
 #include <sys/mman.h>     // для mmap и макросов его
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <signal.h>
 #include <errno.h>
+#include <pthread.h> // Добавлено для pthread_t
 
 // --- Константы ---
 #define MAX_INSTANCES 16       // Макс. кол-во клиентов + серверов в одном процессе (всего 32 сущности)
@@ -80,32 +79,23 @@ struct ClientInstance
 // --- Глобальные переменные ---
 // работаем ли мы еще
 volatile bool g_running = 0;
-// файловый дескриптор для обработки сигналов
-volatile int g_signalfd = -1;
 // поток-слушатель
 extern pthread_t g_listener_tid;
 
 // массив обработчиков сигналов
 volatile struct SignalDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];
 
-// TODO: убрать, это устаревший код
-// volatile sig_atomic_t g_signal_received_flag = 0;
-// volatile int g_signal_client_id = -1;
-// volatile int g_signal_shm_id = -1;
-
 // Массивы для хранения экземпляров
 struct ServerInstance g_servers[MAX_INSTANCES];
 struct ClientInstance g_clients[MAX_INSTANCES];
-int g_num_servers = 0; // Счетчик активных серверов (не индекс!)
+int g_num_servers = 0; // Счетчик активных серверов
 int g_num_clients = 0; // Счетчик активных клиентов
 
-long g_page_size = 4096; // Размер страницы (определим в main)
+long g_page_size = PAGE_SIZE; // Размер страницы (определим в main)
 int g_dev_fd = -1;       // Глобальный файловый дескриптор устройства
 
 // --- Прототипы функций ---
 
-// --- обработчик сигналов ---
-// void signal_handler(int sig, siginfo_t *info, void *ucontext);
 // обработчик уведомления NEW_CONNECTION
 void handle_new_connection(const struct notification_data *ntf);
 // обработчик уведомления NEW_MESSAGE
@@ -114,8 +104,8 @@ void handle_new_message(const struct notification_data *ntf);
 // Функция поиска и вызова обработчика
 void dispatch_signal(const struct notification_data *ntf);
 
-// --- Поток для Ожидания и Обработки Сигналов ---
-void *signal_listener_thread(void *arg);
+// --- Поток для Ожидания и Обработки Уведомлений ---
+void *notification_listener_thread(void *arg);
 
 // Инициализация
 void initialize_instances();
@@ -126,38 +116,41 @@ void get_page_size();
 // получение индекса из строки
 bool parse_index(const char *arg, int *index, int max_val);
 
-// поиск сервера по индексу
+// поиск сервера по ID ядра
 struct ServerInstance *find_server_by_driver_id(int id);
+// Поиск сервера по ИНДЕКСУ МАССИВА (остается для process_command)
 struct ServerInstance *find_server_instance(int index);
-// поиск клиента по индексу
+// Поиск клиента по ИНДЕКСУ МАССИВА (остается для process_command)
 struct ClientInstance *find_client_instance(int index);
+
+// --- Функции, связанные с сервером (вспомогательные) ---
 int server_find_shm_mapping_index(struct ServerInstance *server, int shm_id);
 struct ServerShmMapping *server_find_submem_by_id(struct ServerInstance *server, int sub_mem_id);
 struct ServerShmMapping *server_create_shm_mapping(struct ServerInstance *server, int sub_mem_id);
 int server_find_connection_index(struct ServerInstance *server, int client_id);
 void server_add_connection(struct ServerInstance *server, int client_id, int shm_id);
 
-// Действия с сервером
-bool server_register(const char *name);
-bool server_mmap(int index, int shm_id);
-bool server_write(int index, int client_id, long offset, const char *text);
-// bool server_read(int index, int client_id, long offset, long length);
+// --- Основные Действия с сервером (принимают указатель) ---
+bool server_register(const char *name); // Регистрация не связана с существующим экземпляром
+bool server_mmap(struct ServerInstance *server, int shm_id);
+bool server_write(struct ServerInstance *server, int client_id, long offset, const char *text);
 bool server_read(struct ServerInstance *server, struct ServerShmMapping *submem, long offset, long length);
-void server_show(int index);
+void server_show(struct ServerInstance *server);
 void server_cleanup(struct ServerInstance *server);
 
-// Действия с клиентом
-bool client_register();
-bool client_connect(int index, const char *server_name);
-bool client_mmap(int index);
-bool client_write(int index, long offset, const char *text);
-// bool client_read(int index, long offset, long length);
+
+// --- Основные Действия с клиентом (принимают указатель) ---
+bool client_register(); // Регистрация не связана с существующим экземпляром
+bool client_connect(struct ClientInstance *client, const char *server_name);
+bool client_mmap(struct ClientInstance *client);
+bool client_write(struct ClientInstance *client, long offset, const char *text);
+// client_read уже принимает указатель
 bool client_read(struct ClientInstance *client, long offset, long length);
-void client_show(int index);
+void client_show(struct ClientInstance *client);
+// client_cleanup уже принимает указатель
 void client_cleanup(struct ClientInstance *client);
 
 // Основной цикл
 void print_commands();
-// void process_signal();
 void process_command(char *input);
 void cleanup_all();

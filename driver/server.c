@@ -126,24 +126,6 @@ void server_destroy(struct server_t *srv)
 
     INF("Destroying server (ID:%d)(NAME:%s)", srv->m_id, srv->m_name);
 
-    // для безопасного удаления
-    //struct serv_conn_list_t *con, *tmp;
-
-    // // Удаление списка соединений
-    // mutex_lock(&srv->m_con_list_lock);
-    // list_for_each_entry_safe(con, tmp, &srv->connection_list.list, list)
-    // {
-    //     // удаляем соединение сервера
-    //     server_delete_connection(srv, con);
-
-    //     // удаление из списка подключенных клиентов к серверу
-    //     // list_del(&con->list);
-
-    //     // очистка памяти
-    //     // kfree(con);
-    // }
-    // mutex_unlock(&srv->m_con_list_lock);
-
     // удаление сервера из глобального списка
     mutex_unlock(&g_servers_lock);
     list_del(&srv->list);
@@ -188,7 +170,7 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     // Итерируемся по списку клиентов
     list_for_each_entry(server, &g_servers_list, list)
     {
-        if (server->m_task_p && server->m_task_p->m_reg_task->m_task_p->pid == pid && server->m_id == id)
+        if (/*server->m_task_p && server->m_task_p->m_reg_task->m_task_p->pid == pid &&*/ server->m_id == id)
         {
             INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
                 server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
