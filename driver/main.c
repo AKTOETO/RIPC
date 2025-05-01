@@ -221,67 +221,6 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             ERR("sending notif failed");
         }
 
-        // // создание уведомления
-        // ntf = notification_create(
-        //     NOTIF_SENDER_CLIENT, NOTIF_T_NEW_MESSAGE,
-        //     conn->m_mem_p->m_id, conn->m_client_p->m_id, server->m_id);
-        // if (!ntf)
-        // {
-        //     ERR("Notif hasnt created");
-        //     return -EFAULT;
-        // }
-
-        // // добавляем к процессу уведомление
-        // if (!reg_task_add_notification(conn->m_client_p->m_task_p->m_reg_task, ntf))
-        // {
-        //     INF("Notification sent to client (ID:%d)(PID:%d)",
-        //         conn->m_client_p->m_id,
-        //         conn->m_client_p->m_task_p->m_reg_task->m_task_p->pid);
-        // }
-
-        // // упаковываем (client id + sub mem id) для отправки
-        // packed_id = pack_ids(id, conn->m_mem_p->m_id);
-
-        // // если произошла ошибка упаковки
-        // if (packed_id == (u32)-EINVAL)
-        // {
-        //     ERR("Failed to pack ID for NEW_MESSAGE signal (CLIENT ID:%d)\n", id);
-        //     return -EINVAL;
-        // }
-
-        // // формируем данные для отправки сигнала
-        // memset(&sig_info, 0, sizeof(struct kernel_siginfo));
-        // sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
-        // sig_info.si_code = SI_QUEUE;     // Указываем, что сигнал из ядра
-        // sig_info.si_errno = conn->m_server_p->m_id;
-        // sig_info.si_int = packed_id;
-
-        // // чтобы сервер не удалился или не изменился, пока сигнал отправляю
-        // mutex_lock(&server->m_lock);
-
-        // // проверка существования task struct
-        // if (!server->m_task_p || !pid_alive(server->m_task_p))
-        // {
-        //     ERR("Server task is NULL or server process doesnt exist");
-        //     mutex_unlock(&server->m_lock);
-        //     return -EINVAL;
-        // }
-        // INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
-        //     NEW_MESSAGE, server->m_task_p->pid, packed_id, client->m_id, conn->m_mem_p->m_id);
-        // sig_ret = send_sig_info(NEW_MESSAGE, &sig_info, conn->m_server_p->m_task_p);
-
-        // mutex_unlock(&server->m_lock);
-
-        // // если возникла ошибка при отправке сигнала
-        // if (sig_ret < 0)
-        // {
-        //     ERR("Failed to send signal %d to server (PID:%d)(ID:%d): error %d\n",
-        //         NEW_MESSAGE, server->m_task_p->pid, server->m_id, sig_ret);
-        // }
-        // else
-        //     INF("Signal %d sent successfully to server (PID:%d)(ID:%d)\n",
-        //         NEW_MESSAGE, server->m_task_p->pid, server->m_id);
-
         break;
 
     case IOCTL_SERVER_END_WRITING:
@@ -325,54 +264,6 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         {
             ERR("sending notif failed");
         }
-
-        // // создание уведомления
-        // ntf = notification_create(
-        //     NOTIF_SENDER_SERVER, NOTIF_T_NEW_MESSAGE,
-        //     conn->m_mem_p->m_id, conn->m_server_p->m_id, client->m_id);
-        // if (!ntf)
-        // {
-        //     ERR("Notif hasnt created");
-        //     return -EFAULT;
-        // }
-
-        // // добавляем к процессу уведомление
-        // if (!reg_task_add_notification(conn->m_client_p->m_task_p->m_reg_task, ntf))
-        // {
-        //     INF("Notification sent to client (ID:%d)(PID:%d)",
-        //         conn->m_client_p->m_id,
-        //         conn->m_client_p->m_task_p->m_reg_task->m_task_p->pid);
-        // }
-        // упаковываем (server id) для отправки
-        // packed_id = pack_ids(server_id, 0);
-
-        // // если произошла ошибка упаковки
-        // if (packed_id == (u32)-EINVAL)
-        // {
-        //     ERR("Failed to pack ID for NEW_MESSAGE signal (SERVER ID:%d)\n", server_id);
-        //     return -EINVAL;
-        // }
-        // // формируем данные для отправки сигнала
-        // memset(&sig_info, 0, sizeof(struct kernel_siginfo));
-        // sig_info.si_signo = NEW_MESSAGE; // Новое сообщение
-        // sig_info.si_code = SI_QUEUE;     // Указываем, что сигнал из ядра
-        // // Помещаем упакованные данные в поле si_int.
-        // sig_info.si_int = packed_id;
-
-        // // отправка сигнала
-        // INF("Sending signal %d to client PID %d with data 0x%x (server=%d, shm=%d)\n",
-        //     NEW_MESSAGE, client->m_task_p->pid, packed_id, server_id, conn->m_mem_p->m_id);
-        // sig_ret = send_sig_info(NEW_MESSAGE, &sig_info, client->m_task_p);
-
-        // // если возникла ошибка при отправке сигнала
-        // if (sig_ret < 0)
-        // {
-        //     ERR("Failed to send signal %d to client (PID:%d) (ID:%d): error %d\n",
-        //         NEW_MESSAGE, client->m_task_p->pid, client->m_id, sig_ret);
-        // }
-        // else
-        //     INF("Signal %d sent successfully to client (PID:%d) (ID:%d)\n",
-        //         NEW_MESSAGE, client->m_task_p->pid, client->m_id);
         break;
 
     default:
@@ -390,24 +281,13 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     INF("=== new mmap request ===");
 
     int ret = 0;
-    // Получаем упакованный ID из смещения в СТРАНИЦАХ ---
-    // vma->vm_pgoff содержит (offset_из_userspace / PAGE_SIZE),
-    // что как раз и есть наше исходное packed_id.
     u32 packed_id = (u32)vma->vm_pgoff;
     struct client_t *client = NULL;
     struct server_t *server = NULL;
     struct sub_mem_t *sub = NULL;
     struct connection_t *conn = NULL;
     u32 packed_cli_sub_id = 0;
-    // kernel_siginfo sig_info; // для отправки сигнала
-    // struct notification_t *ntf = NULL;
 
-    // TODO: пока еще нет ограничений на id, в будущем переделать
-    // Проверяем корректность offset (должен содержать id клиента/сервера)
-    // if (offset < MIN_ID || offset > MAX_ID) {
-    //     pr_err("Invalid offset (expected ID in range [%d-%d])\n", MIN_ID, MAX_ID);
-    //     return -EINVAL;
-    // }
     // id не может быть отрицательным
     if (packed_id < 0)
     {
@@ -455,35 +335,8 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
 
         INF("Data packed: (client_id=%d, sub_mem_id=%d)\n", client->m_id, conn->m_mem_p->m_id);
 
-        // // Подготавливаем структуру kernel_siginfo
-        // clear_siginfo(&sig_info);
-        // sig_info.si_signo = NEW_CONNECTION; // Номер сигнала
-        // sig_info.si_code = SI_QUEUE;        // Указываем, что сигнал из ядра
-
-        // // Помещаем упакованные данные в поле si_int.
-        // sig_info.si_int = (int)packed_cli_sub_id;
-        // sig_info.si_errno = (int)conn->m_server_p->m_id;
-
         // чтобы сервер не удалился или не изменился, пока сигнал отправляю
         mutex_lock(&conn->m_server_p->m_lock);
-
-        // if (!pid_alive(conn->m_server_p->m_task_p))
-        // {
-        //     ERR("Server (ID:%d)(NAME:%s)(PID:%d) is dead",
-        //         conn->m_server_p->m_id, conn->m_server_p->m_name,
-        //         conn->m_server_p->m_task_p->pid);
-        //     return -EEXIST;
-        // }
-        // else
-        // {
-        //     INF("Server (ID:%d)(NAME:%s)(PID:%d) alive",
-        //         conn->m_server_p->m_id, conn->m_server_p->m_name,
-        //         conn->m_server_p->m_task_p->pid);
-        // }
-
-        // INF("Sending signal %d to server PID %d with data 0x%x (client=%d, shm=%d)\n",
-        //     NEW_CONNECTION, conn->m_server_p->m_task_p->pid, packed_cli_sub_id, client->m_id, conn->m_mem_p->m_id);
-        // int sig_ret = send_sig_info(NEW_CONNECTION, &sig_info, conn->m_server_p->m_task_p);
 
         // отправка уведомления
         if ((ret = notification_send(CLIENT, NEW_CONNECTION, conn)))
@@ -491,41 +344,9 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
             ERR("notification sending failed");
         }
 
-        // создаем уведомление
-        // ntf = notification_create(
-        //     NOTIF_SENDER_CLIENT, NOTIF_T_NEW_CONNECTION,
-        //     conn->m_mem_p->m_id, client->m_id, conn->m_server_p->m_id);
-        // if (!ntf)
-        // {
-        //     ERR("Notif didnt create");
-        //     mutex_unlock(&conn->m_server_p->m_lock);
-        //     goto found;
-        // }
-
-        // // добавляем к процессу уведомление
-        // if (!reg_task_add_notification(conn->m_server_p->m_task_p->m_reg_task, ntf))
-        // {
-        //     INF("Notification sent to server (ID:%d)(NAME:%s)(PID:%d)",
-        //         conn->m_server_p->m_id, conn->m_server_p->m_name,
-        //         conn->m_server_p->m_task_p->m_reg_task->m_task_p->pid);
-        // }
-
         // устанавливаем флаг в значение: память отображена на сервере
         atomic_set(&conn->m_serv_mmaped, 1);
         mutex_unlock(&conn->m_server_p->m_lock);
-
-        // если возникла ошибка при отправке сигнала
-        // if (sig_ret < 0)
-        // {
-        //     ERR("Failed to send signal %d to server PID %d: error %d\n",
-        //         NEW_CONNECTION, conn->m_server_p->m_task_p->pid, sig_ret);
-        //     // Ошибка отправки (например, процесс уже не существует - ESRCH).
-        //     // Обычно не критично для mmap, просто логируем.
-        // }
-        // else
-        // {
-        //     INF("Signal %d sent successfully to server PID %d\n", NEW_CONNECTION, conn->m_server_p->m_task_p->pid);
-        // }
 
         goto found;
     }

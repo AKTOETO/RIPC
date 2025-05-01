@@ -24,8 +24,8 @@ typedef void (*notif_handler_func_t)(const struct notification_data *fdsi);
 
 // --- Структуры ---
 
-// Описание обработчика сигнала
-struct SignalDispatcher
+// Описание обработчика уведомления
+struct NotificationDispatcher
 {
     int signo;                     // номер сигнала
     notif_handler_func_t handler; // указатель на обработчик сигнала
@@ -83,7 +83,7 @@ volatile bool g_running = 0;
 extern pthread_t g_listener_tid;
 
 // массив обработчиков сигналов
-volatile struct SignalDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];
+volatile struct NotificationDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];
 
 // Массивы для хранения экземпляров
 struct ServerInstance g_servers[MAX_INSTANCES];

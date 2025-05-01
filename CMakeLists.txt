@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(RIPC_Project LANGUAGES CXX)
+
+# Устанавливаем стандарт C++ 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF) # Отключаем расширения GNU
+
+# Добавляем предупреждения компилятора
+# add_compile_options(-Wall -Wextra -pedantic)
+
+# --- Включение Подкаталогов ---
+# Сначала драйвер (если user-space от него зависит, хотя обычно нет)
+add_subdirectory(driver)
+# Затем user-space библиотека
+add_subdirectory(libripc)
+# Затем тестовое приложение
+add_subdirectory(test_app)
+add_subdirectory(test_app2)
+
+# --- Пользовательские цели верхнего уровня (для удобства) ---
+# Они будут работать, так как цели из подкаталогов видны на верхнем уровне
+add_custom_target(build_driver
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ripc_driver_kmod # Используем имя цели из driver/CMakeLists.txt
+    COMMENT "Building the kernel module via its target"
+    VERBATIM
+)
+add_custom_target(clean_driver
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ripc_driver_clean # Используем имя цели из driver/CMakeLists.txt
+    COMMENT "Cleaning the kernel module via its target"
+    VERBATIM
+)
+
+message(STATUS "Настройка проекта завершена. Для сборки всего: 'make' или 'cmake --build .'")
+message(STATUS "Для сборки только драйвера: 'make ripc_driver_kmod' или 'make build_driver'")
+message(STATUS "Для очистки только драйвера: 'make ripc_driver_clean' или 'make clean_driver'")

@@ -1,62 +1,73 @@
-# итоговый модуль
-obj-m += dripc.o
+# Имя модуля (без .o)
+MODULE_NAME := dripc
+# Собираемый объект модуля
+obj-m += $(MODULE_NAME).o
 
-# объектные файлы для сборки модуля
-dripc-y := id.o connection.o task.o client.o server.o shm.o main.o
+# Список объектных файлов (.o), из которых собирается модуль
+$(MODULE_NAME)-y := id.o connection.o task.o client.o server.o shm.o main.o
 
-# Добавляем каталог include
-#EXTRA_CFLAGS += -I$(CURDIR)/../include
-ccflags-y += -I$(PWD)/include 
-ccflags-y += -I$(PWD)/driver 
-#ccflags-y += -I$(CURDIR)/.../include
-CURRENT = $(shell uname -r)
+# --- Флаги компиляции ---
+# Добавляем пути include относительно каталога исходников модуля ($(src))
+# и относительно корневого каталога проекта (нужно передать его как-то)
+# Проще всего использовать абсолютные пути или пути относительно $(src)
 
-# Путь к ядру
-KERNELDIR ?= /lib/modules/$(CURRENT)/build
+# $(src) - переменная Kbuild, указывающая на каталог, переданный в M=...
+# $(PWD) в данном контексте может быть непредсказуем при вызове из CMake
+
+# Путь к корневому include (ripc.h, id_pack.h) - получаем через переменную окружения или опцию make
+RIPC_ROOT_INCLUDE ?= $(abspath $(src)/../include)
 
 # получение нужного компилятора
-CC = $(shell grep CONFIG_CC_VERSION /boot/config-$(CURRENT) | cut -d'"' -f2 | awk '{print $$1}')
+CURRENT := $(shell uname -r)
+KERNELDIR ?= /lib/modules/$(CURRENT)/build
+CC := $(shell grep CONFIG_CC_VERSION_TEXT /boot/config-$(CURRENT) | head -n 1 | cut -d'"' -f2 | awk '{print $$1}')
 
-default: help
+# Добавляем пути:
+# 1. Корневой include
+# 2. Текущий каталог исходников драйвера ($(src) == driver/)
+ccflags-y += -I$(RIPC_ROOT_INCLUDE)
+ccflags-y += -I$(src)
 
-# Сборка
+# --- Цели Makefile (для вызова из CMake или вручную) ---
+
+# Цель по умолчанию (обычно не используется при вызове извне)
+# Но Kbuild требует цель 'modules'
+all: modules
+
+# Стандартные цели Kbuild
+modules modules_install clean help:
+	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y)"
+
+.PHONY: all modules modules_install clean help
+
+# Оставляем старые цели для ручного вызова из driver/
+# (они не будут использоваться CMake)
+
 b:
-	@echo ""
-	@echo "== BUILDING DRIVER =="
-	@echo "Компиляция с флагами: $(ccflags-y)"
-	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules
+	@echo "[Driver Makefile] Building (manual target 'b')..."
+	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y)"
 
-# очистка верменных файлов
 c:
-	@echo ""
-	@echo "== CLEANING DRIVER =="
+	@echo "[Driver Makefile] Cleaning (manual target 'c')..."
 	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) clean
-	rm -rf *.ko *.o *.mod.c .*.cmd .tmp_versions Module.symvers modules.order
+	rm -f *.ko *.o *.mod.c .*.cmd .tmp_versions Module.symvers modules.order *.order
 
-# установка модуля ядра
-i:
-	sudo insmod dripc.ko
+i: $(MODULE_NAME).ko
+	sudo insmod $<
 
-# извлечение модуля ядра
 r:
-	sudo rmmod dripc
+	sudo rmmod $(MODULE_NAME) || true
 
-# персборка
 cb: c b
 
-# отображение логов
 l:
 	sudo dmesg -w | grep 'RIPC:'
 
-# помощь
-help: 
-	@echo ""
-	@echo "== DRIVER's HELP =="
-	@echo "  b  - Build the kernel module"
-	@echo "  c  - Clean build artifacts"
-	@echo "  i  - Insert the module (sudo required)"
-	@echo "  l  - Show driver's logs (sudo required)"
-	@echo "  r  - Remove the module (sudo required)"
-	@echo "  cb - Clean and rebuild"
-
-
+help_manual:
+	@echo "[Driver Makefile] Manual targets:"
+	@echo "  make b  - Build module"
+	@echo "  make c  - Clean module"
+	@echo "  make i  - Insert module (sudo)"
+	@echo "  make r  - Remove module (sudo)"
+	@echo "  make cb - Clean and rebuild"
+	@echo "  make l  - Show kernel logs (sudo)"

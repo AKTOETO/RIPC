@@ -1,0 +1,115 @@
+#ifndef RIPC_API_HPP
+#define RIPC_API_HPP
+
+//#include "ripc.h"
+//#include "id_pack.h"
+#include "types.hpp" // Включаем общие типы (NotificationHandler, notif_type)
+#include "server.hpp"
+#include "client.hpp"
+#include <string>    // Для аргументов функций
+#include <cstddef>   // size_t
+
+// --- Публичный интерфейс библиотеки RIPC ---
+
+namespace ripc
+{
+
+    // Прямые объявления классов (пользователь работает с указателями)
+    class Server;
+    class Client;
+
+    // --- Управление библиотекой ---
+
+    /**
+     * @brief Инициализирует библиотеку и соединение с драйвером RIPC.
+     * Должна быть вызвана один раз перед использованием любых других функций библиотеки.
+     * @param device_path Путь к файлу устройства драйвера (например, "/dev/ripc").
+     * @throws std::runtime_error если инициализация не удалась.
+     */
+    void initialize(const std::string &device_path = DEVICE_PATH); // DEVICE_PATH из ripc.h
+
+    /**
+     * @brief Завершает работу библиотеки, освобождает все ресурсы.
+     * Вызывает деструкторы всех созданных клиентов и серверов.
+     */
+    void shutdown();
+
+    // --- Настройка лимитов (вызывать ДО initialize) ---
+
+    /**
+     * @brief Устанавливает максимальное количество одновременно существующих серверов.
+     * @param limit Максимальное количество.
+     */
+    void setGlobalServerLimit(size_t limit);
+
+    /**
+     * @brief Устанавливает максимальное количество одновременно существующих клиентов.
+     * @param limit Максимальное количество.
+     */
+    void setGlobalClientLimit(size_t limit);
+
+    // --- Создание и удаление сущностей ---
+
+    /**
+     * @brief Создает и регистрирует новый экземпляр сервера.
+     * @param name Имя сервера (макс. MAX_SERVER_NAME - 1 символов).
+     * @return Невладеющий указатель на созданный объект Server.
+     * @throws std::runtime_error если достигнут лимит серверов или регистрация не удалась.
+     * @throws std::invalid_argument если имя некорректно.
+     */
+    Server *createServer(const std::string &name);
+
+    /**
+     * @brief Создает и регистрирует новый экземпляр клиента.
+     * @return Невладеющий указатель на созданный объект Client.
+     * @throws std::runtime_error если достигнут лимит клиентов или регистрация не удалась.
+     */
+    Client *createClient();
+
+    /**
+     * @brief Удаляет экземпляр сервера по его ID ядра.
+     * Вызывает деструктор объекта Server и освобождает связанные ресурсы.
+     * @param server_id ID сервера, полученный при создании.
+     * @return true, если сервер был найден и удален, иначе false.
+     */
+    bool deleteServer(int server_id);
+
+    /**
+     * @brief Удаляет экземпляр клиента по его ID ядра.
+     * Вызывает деструктор объекта Client и освобождает связанные ресурсы.
+     * @param client_id ID клиента, полученный при создании.
+     * @return true, если клиент был найден и удален, иначе false.
+     */
+    bool deleteClient(int client_id);
+
+    // --- Поиск сущностей ---
+
+    /**
+     * @brief Находит существующий экземпляр сервера по его ID ядра.
+     * @param server_id ID искомого сервера.
+     * @return Невладеющий указатель на объект Server или nullptr, если не найден.
+     */
+    Server *findServerById(int server_id);
+
+    /**
+     * @brief Находит существующий экземпляр клиента по его ID ядра.
+     * @param client_id ID искомого клиента.
+     * @return Невладеющий указатель на объект Client или nullptr, если не найден.
+     */
+    Client *findClientById(int client_id);
+
+    // --- Обработка уведомлений ---
+
+    /**
+     * @brief Регистрирует пользовательскую функцию-обработчик для указанного типа уведомлений.
+     * Если обработчик зарегистрирован, он будет вызван ВМЕСТО стандартной обработки
+     * (вызова метода handleNotification у соответствующего Client/Server).
+     * @param type Тип уведомления (из enum notif_type в ripc.h).
+     * @param handler Функция или лямбда вида void(const notification_data&).
+     *                Передача пустой функции (nullptr или {}) отменяет регистрацию.
+     */
+    void registerNotificationHandler(enum notif_type type, NotificationHandler handler);
+
+} // namespace ripc
+
+#endif // RIPC_API_HPP

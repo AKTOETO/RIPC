@@ -14,7 +14,7 @@
 // Определения глобальных переменных из test.h (уже объявлены в .h)
 // volatile bool g_running = 0;
 pthread_t g_listener_tid = 0;
-// volatile struct SignalDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];
+// volatile struct NotificationDispatcher g_signal_dispatch_table[MAX_HANDLED_SIGNALS];
 // struct ServerInstance g_servers[MAX_INSTANCES];
 // struct ClientInstance g_clients[MAX_INSTANCES];
 // int g_num_servers = 0;
@@ -241,7 +241,7 @@ void dispatch_signal(const struct notification_data *ntf)
 }
 
 // --- Поток для Ожидания и Обработки Уведомлений ---
-void *signal_listener_thread(void *arg)
+void *notification_listener_thread(void *arg)
 {
     (void)arg;
     printf("[Notification Listener]: Thread %lu started.\n", (unsigned long)pthread_self());
@@ -407,7 +407,7 @@ bool setup_signal_handler() // Название не совсем точное, 
     printf("Initializing notification listener thread...\n");
 
     // Запускаем поток-слушатель
-    if (pthread_create(&g_listener_tid, NULL, signal_listener_thread, NULL) != 0)
+    if (pthread_create(&g_listener_tid, NULL, notification_listener_thread, NULL) != 0)
     {
         perror("Error creating notification listener thread");
         return false;
@@ -788,7 +788,7 @@ bool server_register(const char *name)
 
     g_num_servers++; // Увеличиваем глобальный счетчик
     printf("Server instance %d registered as '%s' with driver_ID: %d\n", free_index, srv->name, srv->server_id);
-    return true;
+    return srv;
 }
 
 // Отображение памяти для конкретного shm_id у сервера
