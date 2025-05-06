@@ -1,4 +1,4 @@
-#ifndef RIPC_ENTITY_MANAGER_HPP // Используем .hpp и защитные директивы
+#ifndef RIPC_ENTITY_MANAGER_HPP 
 #define RIPC_ENTITY_MANAGER_HPP
 
 #include "context.hpp" // Менеджер владеет контекстом
@@ -39,8 +39,8 @@ namespace ripc
         std::mutex manager_mutex; // Мьютекс для защиты карт (servers, clients, notification_handlers)
 
         // Лимиты
-        size_t max_servers = DEFAULT_MAX_SERVERS; // Используем константу из ripc_types.hpp
-        size_t max_clients = DEFAULT_MAX_CLIENTS; // Используем константу из ripc_types.hpp
+        size_t max_servers = DEFAULTS::MAX_SERVERS; // Используем константу из ripc_types.hpp
+        size_t max_clients = DEFAULTS::MAX_CLIENTS; // Используем константу из ripc_types.hpp
 
         // Состояние инициализации
         bool is_initialized = false;
@@ -59,7 +59,7 @@ namespace ripc
         RipcEntityManager &operator=(const RipcEntityManager &) = delete;
 
         // Внутренние методы инициализации и завершения (вызываются из глобальных функций)
-        friend void initialize(const std::string &);
+        friend void initialize(const std::string &device_path);
         friend void shutdown();
         void doInitialize(const std::string &device_path);
         void doShutdown();
@@ -160,19 +160,19 @@ namespace ripc
 
         // --- Статические методы для установки лимитов (вызывать ДО initialize) ---
 
-        /**
-         * @brief Устанавливает глобальный лимит на количество одновременно существующих серверов.
-         * Должна вызываться до первого вызова ripc::initialize().
-         * @param limit Новый лимит.
-         */
-        static void setGlobalServerLimit(size_t limit);
+        // /**
+        //  * @brief Устанавливает глобальный лимит на количество одновременно существующих серверов.
+        //  * Должна вызываться до первого вызова ripc::initialize().
+        //  * @param limit Новый лимит.
+        //  */
+        // static void setGlobalServerLimit(size_t limit);
 
-        /**
-         * @brief Устанавливает глобальный лимит на количество одновременно существующих клиентов.
-         * Должна вызываться до первого вызова ripc::initialize().
-         * @param limit Новый лимит.
-         */
-        static void setGlobalClientLimit(size_t limit);
+        // /**
+        //  * @brief Устанавливает глобальный лимит на количество одновременно существующих клиентов.
+        //  * Должна вызываться до первого вызова ripc::initialize().
+        //  * @param limit Новый лимит.
+        //  */
+        // static void setGlobalClientLimit(size_t limit);
     };
 
     // // --- Глобальные функции API (объявления здесь, реализация в ripc_api.cpp) ---

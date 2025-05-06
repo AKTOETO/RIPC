@@ -59,23 +59,6 @@ struct notification_data
 };
 
 /**
- * SIGNALS
- */
-
-// Значения взяты из диапазона сигналов реального времени 34-63
-// сигнал для обозначения нового подколючения к серверу
-// #define NEW_CONNECTION 40 //(SIGRTMIN + 0)// 40
-// сигнал для обозначения новго сообщения для сервера или для клиента
-// #define NEW_MESSAGE 41 //(SIGRTMIN + 1)//41
-
-// SIGNAL NEW_CONNECTION
-// struct new_connection
-// {
-//     int client_pid;
-//     int client_id;
-// };
-
-/**
  * IOCTL data for commands
  */
 

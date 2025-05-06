@@ -8,12 +8,12 @@ namespace ripc
 
     void initialize(const std::string &device_path)
     {
-        RipcEntityManager::getInstance().doInitialize(device_path); // Вызываем приватный метод
+        RipcEntityManager::getInstance().doInitialize(device_path);
     }
 
     void shutdown()
     {
-        RipcEntityManager::getInstance().doShutdown(); // Вызываем приватный метод
+        RipcEntityManager::getInstance().doShutdown();
     }
 
     Server *createServer(const std::string &name)
@@ -53,12 +53,12 @@ namespace ripc
 
     void setGlobalServerLimit(size_t limit)
     {
-        RipcEntityManager::setGlobalServerLimit(limit);
+        //RipcEntityManager::setGlobalServerLimit(limit);
     }
 
     void setGlobalClientLimit(size_t limit)
     {
-        RipcEntityManager::setGlobalClientLimit(limit);
+        //RipcEntityManager::setGlobalClientLimit(limit);
     }
 
 } // namespace ripc

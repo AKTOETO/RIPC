@@ -13,321 +13,354 @@
 #include <iostream>
 #include <algorithm> // std::find_if
 
-#ifndef MAP_FAILED
-#define MAP_FAILED ((void *)-1)
-#endif
-// Определим константы здесь, если они не в ripc_types.hpp
-constexpr size_t MAX_SERVER_CLIENTS_INTERNAL = 16;
-constexpr size_t MAX_SERVER_SHM_INTERNAL = 16;
-
 namespace ripc
 {
 
     // Приватный конструктор
     Server::Server(RipcContext &ctx, const std::string &server_name)
-        : context(ctx), name(server_name),
-          connections(MAX_SERVER_CLIENTS_INTERNAL), // Используем константу или значение из types.hpp
-          mappings(MAX_SERVER_SHM_INTERNAL)
+        : m_context(ctx), m_name(server_name),
+          m_connections(DEFAULTS::MAX_SERVERS),
+          m_mappings(DEFAULTS::MAX_SERVERS_MAPPING)
     {
-        if (name.empty() || name.length() >= MAX_SERVER_NAME)
+        if (m_name.empty() || m_name.length() >= MAX_SERVER_NAME)
         {
             throw std::invalid_argument("Invalid server name.");
         }
-        std::cout << "Server '" << name << "': Basic construction." << std::endl;
-        // Векторы инициализируются по умолчанию
+        std::cout << "Server '" << m_name << "': Basic construction." << std::endl;
     }
 
     // Приватный init
     void Server::init()
     {
-        if (initialized)
+        if (m_initialized)
             return;
-        std::cout << "Server '" << name << "': init() called by EntityManager." << std::endl;
+        std::cout << "Server '" << m_name << "': init() called by EntityManager." << std::endl;
 
         server_registration reg_data;
-        strncpy(reg_data.name, name.c_str(), MAX_SERVER_NAME - 1);
+        strncpy(reg_data.name, m_name.c_str(), MAX_SERVER_NAME - 1);
         reg_data.name[MAX_SERVER_NAME - 1] = '\0';
         reg_data.server_id = -1;
 
-        if (ioctl(context.getFd(), IOCTL_REGISTER_SERVER, &reg_data) < 0)
+        if (ioctl(m_context.getFd(), IOCTL_REGISTER_SERVER, &reg_data) < 0)
         {
             int err_code = errno;
-            throw std::runtime_error("Server init failed: IOCTL_REGISTER_SERVER for '" + name + "': " + strerror(err_code));
+            throw std::runtime_error("Server init failed: IOCTL_REGISTER_SERVER for '" +
+                                     m_name + "': " + strerror(err_code));
         }
         if (!IS_ID_VALID(reg_data.server_id))
         {
-            throw std::runtime_error("Server init failed: Kernel returned invalid server_id: " + std::to_string(reg_data.server_id));
+            throw std::runtime_error("Server init failed: Kernel returned invalid server_id: " +
+                                     std::to_string(reg_data.server_id));
         }
 
-        this->server_id = reg_data.server_id;
-        initialized = true;
-        std::cout << "Server '" << name << "' initialized with ID " << server_id << "." << std::endl;
+        this->m_server_id = reg_data.server_id;
+        m_initialized = true;
+        std::cout << "Server '" << m_name << "' initialized with ID " << m_server_id << "." << std::endl;
     }
 
     // Деструктор
     Server::~Server()
     {
-        std::cout << "Server '" << name << "' (ID: " << server_id << ") destructing..." << std::endl;
-        cleanup_mappings();
-        // Отмена регистрации в ядре делается менеджером
+        std::cout << "Server '" << m_name << "' (ID: " << m_server_id << ") destructing..." << std::endl;
+        // cleanup_mappings();
+        //  Отмена регистрации в ядре делается менеджером
     }
 
     // Приватная очистка mmap
-    void Server::cleanup_mappings()
-    {
-        int unmap_count = 0;
-        for (auto &map_info : mappings)
-        {
-            if (map_info.mapped && map_info.addr != MAP_FAILED)
-            {
-                int current_shm_id = map_info.shm_id; // Копируем для лога
-                void *current_addr = map_info.addr;
-                size_t current_size = map_info.size;
+    // void Server::cleanup_mappings()
+    // {
+    //     int unmap_count = 0;
+    //     for (auto &[id, map_info] : mappings)
+    //     {
+    //         if (map_info.mapped && map_info.addr != MAP_FAILED)
+    //         {
+    //             void *current_addr = map_info.addr;
+    //             size_t current_size = map_info.size;
 
-                map_info.mapped = false;
-                map_info.addr = MAP_FAILED;
-                map_info.size = 0;
+    //             map_info.mapped = false;
+    //             map_info.addr = MAP_FAILED;
+    //             map_info.size = 0;
 
-                if (munmap(current_addr, current_size) == 0)
-                {
-                    unmap_count++;
-                }
-                else
-                {
-                    perror(("Server " + std::to_string(server_id) + ": munmap failed for shm_id " + std::to_string(current_shm_id)).c_str());
-                }
-            }
-            // Сбрасываем неактивные слоты тоже на всякий случай
-            // map_info.shm_id = -1; // Не обязательно, если инициализация правильная
-        }
-        if (unmap_count > 0)
-        {
-            std::cout << "Server " << server_id << ": Unmapped " << unmap_count << " regions." << std::endl;
-        }
-        // Очищаем вектор или сбрасываем shm_id? Зависит от логики findOrCreate
-        for (auto &map_info : mappings)
-            map_info.shm_id = -1; // Сбросим ID для чистоты
-    }
+    //             if (munmap(current_addr, current_size) == 0)
+    //             {
+    //                 unmap_count++;
+    //             }
+    //             else
+    //             {
+    //                 perror(("Server " + std::to_string(server_id) +
+    //                         ": munmap failed for shm_id " + std::to_string(id))
+    //                            .c_str());
+    //             }
+    //         }
+    //         // Сбрасываем неактивные слоты тоже на всякий случай
+    //     }
+    //     if (unmap_count > 0)
+    //     {
+    //         std::cout << "Server " << server_id << ": Unmapped " << unmap_count << " regions." << std::endl;
+    //     }
+    //     // // Очищаем вектор или сбрасываем shm_id? Зависит от логики findOrCreate
+    //     // for (auto &map_info : mappings)
+    //     //     map_info.shm_id = -1; // Сбросим ID для чистоты
+    //     mappings.clear();
+    // }
 
     // Приватные проверки
     void Server::checkInitialized() const
     {
-        if (!initialized)
-            throw std::logic_error("Server '" + name + "' (ID: " + std::to_string(server_id) + ") is not initialized.");
+        if (!m_initialized)
+            throw std::logic_error("Server '" + m_name + "' (ID: " +
+                                   std::to_string(m_server_id) + ") is not initialized.");
     }
 
     // --- Публичные методы ---
-    int Server::getId() const { return server_id; }
-    const std::string &Server::getName() const { return name; }
-    bool Server::isInitialized() const { return initialized; }
+    int Server::getId() const { return m_server_id; }
+    const std::string &Server::getName() const { return m_name; }
+    bool Server::isInitialized() const { return m_initialized; }
 
-    void Server::mmapSubmemory(int shm_id)
+    // void Server::mmapSubmemory(int shm_id)
+    // {
+    //     checkInitialized();
+    //     if (!IS_ID_VALID(shm_id))
+    //         throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
+
+    //     auto mapping = findOrCreateSHM(shm_id);
+    //     if (!mapping)
+    //     {
+    //         // findOrCreateSHM уже вывел ошибку, если не смог создать
+    //         throw std::runtime_error("Server " + std::to_string(server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(shm_id));
+    //     }
+
+    //     if (mapping->second.mapped)
+    //     {
+    //         // std::cout << "Server " << server_id << ": shm_id " << shm_id << " already mapped." << std::endl;
+    //         return;
+    //     }
+
+    //     u32 packed_id = pack_ids(server_id, shm_id);
+    //     if (packed_id == (u32)-EINVAL)
+    //         throw std::logic_error("Failed to pack IDs for mmap.");
+
+    //     off_t offset = (off_t)packed_id * context.getPageSize();
+    //     std::cout << "Server " << server_id << ": Attempting mmap for shm_id " << shm_id
+    //               << " (offset 0x" << std::hex << offset << ", packed 0x" << packed_id << ")" << std::dec << std::endl;
+
+    //     void *addr = ::mmap(NULL, SHM_REGION_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, context.getFd(), offset);
+
+    //     if (addr == MAP_FAILED)
+    //     {
+    //         int err_code = errno;
+    //         throw std::runtime_error("Server " + std::to_string(server_id) +
+    //                                  ": mmap failed for shm_id " + std::to_string(shm_id) + ": " + strerror(err_code));
+    //     }
+
+    //     mapping->addr = addr;
+    //     mapping->size = SHM_REGION_PAGE_SIZE;
+    //     mapping->mapped = true;
+    //     std::cout << "Server " << server_id << ": Mapped shm_id " << shm_id << " at " << addr << std::endl;
+    // }
+
+    size_t Server::writeToClient(std::shared_ptr<ConnectionInfo> con, Buffer &&result)
     {
         checkInitialized();
-        if (!IS_ID_VALID(shm_id))
-            throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
+        if (!con)
+            throw std::invalid_argument("Server::writeToClient: empty connection ptr");
 
-        ServerShmMapping *mapping = internal_findOrCreateShmMapping(shm_id);
-        if (!mapping)
-        {
-            // internal_findOrCreateShmMapping уже вывел ошибку, если не смог создать
-            throw std::runtime_error("Server " + std::to_string(server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(shm_id));
-        }
+        // память, куда будем писать
+        auto &mem = con->m_sub_mem_p;
+        if (!mem.second)
+            throw std::runtime_error("Server::writeToClient: empty mem ptr");
+        if (!mem.second->m_is_mapped)
+            throw std::runtime_error("Server::writeToClient: mem is not mapped");
 
-        if (mapping->mapped)
-        {
-            // std::cout << "Server " << server_id << ": shm_id " << shm_id << " already mapped." << std::endl;
-            return;
-        }
+        // пишем в память данные
+        size_t write_len = mem.second->write(0, result.data(), result.length());
 
-        u32 packed_id = pack_ids(server_id, shm_id);
-        if (packed_id == (u32)-EINVAL)
-            throw std::logic_error("Failed to pack IDs for mmap.");
-
-        off_t offset = (off_t)packed_id * context.getPageSize();
-        std::cout << "Server " << server_id << ": Attempting mmap for shm_id " << shm_id
-                  << " (offset 0x" << std::hex << offset << ", packed 0x" << packed_id << ")" << std::dec << std::endl;
-
-        void *addr = ::mmap(NULL, SHM_REGION_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, context.getFd(), offset);
-
-        if (addr == MAP_FAILED)
-        {
-            int err_code = errno;
-            throw std::runtime_error("Server " + std::to_string(server_id) + ": mmap failed for shm_id " + std::to_string(shm_id) + ": " + strerror(err_code));
-        }
-
-        mapping->addr = addr;
-        mapping->size = SHM_REGION_PAGE_SIZE;
-        mapping->mapped = true;
-        std::cout << "Server " << server_id << ": Mapped shm_id " << shm_id << " at " << addr << std::endl;
-    }
-
-    size_t Server::writeToClient(int client_id, size_t offset, const void *data, size_t size)
-    {
-        checkInitialized();
-        if (!IS_ID_VALID(client_id))
-            throw std::invalid_argument("Invalid client_id: " + std::to_string(client_id));
-        if (!data && size > 0)
-            throw std::invalid_argument("Invalid data pointer for write.");
-
-        // 1. Найти активное соединение
-        int conn_idx = internal_findConnectionIndex(client_id);
-        if (conn_idx == -1)
-        {
-            throw std::runtime_error("Server " + std::to_string(server_id) + ": No active connection found for client ID " + std::to_string(client_id));
-        }
-        int target_shm_id = connections[conn_idx].shm_id;
-
-        // 2. Найти/создать и отобразить SHM маппинг
-        ServerShmMapping *mapping = internal_findOrCreateShmMapping(target_shm_id);
-        if (!mapping)
-        {
-            throw std::runtime_error("Server " + std::to_string(server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(target_shm_id));
-        }
-        if (!mapping->mapped)
-        {
-            try
-            {
-                mmapSubmemory(target_shm_id); // Попытка mmap по требованию
-            }
-            catch (const std::exception &e)
-            {
-                throw std::runtime_error("Server " + std::to_string(server_id) + ": Cannot write, memory shm_id " + std::to_string(target_shm_id) + " not mapped: " + e.what());
-            }
-            if (!mapping->mapped)
-                throw std::logic_error("Internal: Mapping failed unexpectedly"); // На всякий случай
-        }
-
-        // 3. Проверить смещение и записать
-        if (offset >= mapping->size)
-        {
-            throw std::out_of_range("Server " + std::to_string(server_id) + ": Write offset " + std::to_string(offset) + " out of bounds for shm_id " + std::to_string(target_shm_id));
-        }
-        size_t available = mapping->size - offset;
-        size_t write_len = std::min(size, available);
-
-        memcpy(static_cast<char *>(mapping->addr) + offset, data, write_len);
-
-        // std::cout << "Server " << server_id << " wrote " << write_len << " bytes to shm_id " << target_shm_id << " (client " << client_id << ") at offset " << offset << "." << std::endl;
-
-        // 4. Уведомить драйвер
-        u32 packed_id = pack_ids(server_id, target_shm_id);
+        // отправляем уведомление
+        u32 packed_id = pack_ids(m_server_id, mem.first);
         if (packed_id != (u32)-EINVAL)
         {
-            if (ioctl(context.getFd(), IOCTL_SERVER_END_WRITING, packed_id) < 0)
+            if (ioctl(m_context.getFd(), IOCTL_SERVER_END_WRITING, packed_id) < 0)
             {
-                perror(("Server " + std::to_string(server_id) + ": Warning - IOCTL_SERVER_END_WRITING failed for shm_id " + std::to_string(target_shm_id)).c_str());
+                perror(("Server " + std::to_string(m_server_id) +
+                        ": Warning - IOCTL_SERVER_END_WRITING failed for shm_id " + std::to_string(mem.first))
+                           .c_str());
             }
         }
         else
         {
-            std::cerr << "Server " << server_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
+            std::cerr << "Server " << m_server_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
         }
 
         return write_len;
     }
 
-    size_t Server::writeToClient(int client_id, size_t offset, const std::string &text)
-    {
-        size_t bytes_to_write = text.length();
-        size_t bytes_written = writeToClient(client_id, offset, text.c_str(), bytes_to_write);
-        // Пытаемся добавить null terminator
-        if (bytes_written == bytes_to_write)
-        {
-            int conn_idx = internal_findConnectionIndex(client_id);
-            if (conn_idx != -1)
-            {
-                int shm_id = connections[conn_idx].shm_id;
-                ServerShmMapping *mapping = internal_findOrCreateShmMapping(shm_id);
-                if (mapping && mapping->mapped && (offset + bytes_written + 1) <= mapping->size)
-                {
-                    char nt = '\0';
-                    try
-                    {
-                        writeToClient(client_id, offset + bytes_written, &nt, 1);
-                    }
-                    catch (...)
-                    { /*Игнор*/
-                    }
-                }
-            }
-        }
-        return bytes_written;
-    }
+    // size_t Server::writeToClient(int client_id, size_t offset, const void *data, size_t size)
+    // {
+    //     checkInitialized();
+    //     if (!IS_ID_VALID(client_id))
+    //         throw std::invalid_argument("Invalid client_id: " + std::to_string(client_id));
+    //     if (!data)
+    //         throw std::invalid_argument("Invalid data pointer for write.");
 
-    size_t Server::readFromSubmemory(int shm_id, size_t offset, void *buffer, size_t size_to_read)
-    {
-        checkInitialized();
-        if (!IS_ID_VALID(shm_id))
-            throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
-        if (!buffer && size_to_read > 0)
-            throw std::invalid_argument("Invalid buffer pointer for read.");
+    //     // 1. Найти активное соединение
+    //     int conn_idx = findConnection(client_id);
+    //     if (conn_idx == -1)
+    //     {
+    //         throw std::runtime_error("Server " + std::to_string(m_server_id) +
+    //                                  ": No active connection found for client ID " + std::to_string(client_id));
+    //     }
+    //     int target_shm_id = m_connections[conn_idx].shm_id;
 
-        // 1. Найти/создать и отобразить SHM маппинг
-        ServerShmMapping *mapping = internal_findOrCreateShmMapping(shm_id);
-        if (!mapping)
-        {
-            throw std::runtime_error("Server " + std::to_string(server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(shm_id));
-        }
-        if (!mapping->mapped)
-        {
-            try
-            {
-                mmapSubmemory(shm_id); // Попытка mmap по требованию
-            }
-            catch (const std::exception &e)
-            {
-                throw std::runtime_error("Server " + std::to_string(server_id) + ": Cannot read, memory shm_id " + std::to_string(shm_id) + " not mapped: " + e.what());
-            }
-            if (!mapping->mapped)
-                throw std::logic_error("Internal: Mapping failed unexpectedly after read attempt");
-        }
+    //     // 2. Найти/создать и отобразить SHM маппинг
+    //     ServerShmMapping *mapping = findOrCreateSHM(target_shm_id);
+    //     if (!mapping)
+    //     {
+    //         throw std::runtime_error("Server " + std::to_string(m_server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(target_shm_id));
+    //     }
+    //     if (!mapping->mapped)
+    //     {
+    //         try
+    //         {
+    //             mmapSubmemory(target_shm_id); // Попытка mmap по требованию
+    //         }
+    //         catch (const std::exception &e)
+    //         {
+    //             throw std::runtime_error("Server " + std::to_string(m_server_id) + ": Cannot write, memory shm_id " + std::to_string(target_shm_id) + " not mapped: " + e.what());
+    //         }
+    //         if (!mapping->mapped)
+    //             throw std::logic_error("Internal: Mapping failed unexpectedly"); // На всякий случай
+    //     }
 
-        // 2. Проверить смещение и прочитать
-        if (offset >= mapping->size)
-        {
-            throw std::out_of_range("Server " + std::to_string(server_id) + ": Read offset " + std::to_string(offset) + " out of bounds for shm_id " + std::to_string(shm_id));
-        }
-        size_t available = mapping->size - offset;
-        size_t read_len = std::min(size_to_read, available);
+    //     // 3. Проверить смещение и записать
+    //     if (offset >= mapping->size)
+    //     {
+    //         throw std::out_of_range("Server " + std::to_string(m_server_id) + ": Write offset " + std::to_string(offset) + " out of bounds for shm_id " + std::to_string(target_shm_id));
+    //     }
+    //     size_t available = mapping->size - offset;
+    //     size_t write_len = std::min(size, available);
 
-        if (read_len > 0)
-        {
-            memcpy(buffer, static_cast<const char *>(mapping->addr) + offset, read_len);
-        }
-        // Логирование чтения по желанию
-        return read_len;
-    }
+    //     memcpy(static_cast<char *>(mapping->addr) + offset, data, write_len);
 
-    std::vector<char> Server::readFromSubmemory(int shm_id, size_t offset, size_t size_to_read)
-    {
-        std::vector<char> buffer(size_to_read);
-        size_t bytes_read = readFromSubmemory(shm_id, offset, buffer.data(), size_to_read);
-        buffer.resize(bytes_read);
-        return buffer;
-    }
+    //     // std::cout << "Server " << server_id << " wrote " << write_len << " bytes to shm_id " << target_shm_id << " (client " << client_id << ") at offset " << offset << "." << std::endl;
+
+    //     // 4. Уведомить драйвер
+    //     u32 packed_id = pack_ids(m_server_id, target_shm_id);
+    //     if (packed_id != (u32)-EINVAL)
+    //     {
+    //         if (ioctl(m_context.getFd(), IOCTL_SERVER_END_WRITING, packed_id) < 0)
+    //         {
+    //             perror(("Server " + std::to_string(m_server_id) + ": Warning - IOCTL_SERVER_END_WRITING failed for shm_id " + std::to_string(target_shm_id)).c_str());
+    //         }
+    //     }
+    //     else
+    //     {
+    //         std::cerr << "Server " << m_server_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
+    //     }
+
+    //     return write_len;
+    // }
+
+    // size_t Server::writeToClient(int client_id, size_t offset, const std::string &text)
+    // {
+    //     size_t bytes_to_write = text.length();
+    //     size_t bytes_written = writeToClient(client_id, offset, text.c_str(), bytes_to_write);
+    //     // Пытаемся добавить null terminator
+    //     if (bytes_written == bytes_to_write)
+    //     {
+    //         int conn_idx = findConnection(client_id);
+    //         if (conn_idx != -1)
+    //         {
+    //             int shm_id = m_connections[conn_idx].shm_id;
+    //             ServerShmMapping *mapping = findOrCreateSHM(shm_id);
+    //             if (mapping && mapping->mapped && (offset + bytes_written + 1) <= mapping->size)
+    //             {
+    //                 char nt = '\0';
+    //                 try
+    //                 {
+    //                     writeToClient(client_id, offset + bytes_written, &nt, 1);
+    //                 }
+    //                 catch (...)
+    //                 { /*Игнор*/
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     return bytes_written;
+    // }
+
+    // size_t Server::readFromSubmemory(int shm_id, size_t offset, void *buffer, size_t size_to_read)
+    // {
+    //     checkInitialized();
+    //     if (!IS_ID_VALID(shm_id))
+    //         throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
+    //     if (!buffer)
+    //         throw std::invalid_argument("Invalid buffer pointer for read.");
+
+    //     // 1. Найти/создать и отобразить SHM маппинг
+    //     ServerShmMapping *mapping = findOrCreateSHM(shm_id);
+    //     if (!mapping)
+    //     {
+    //         throw std::runtime_error("Server " + std::to_string(m_server_id) + ": Failed to get mapping slot for shm_id " + std::to_string(shm_id));
+    //     }
+    //     if (!mapping->mapped)
+    //     {
+    //         try
+    //         {
+    //             mmapSubmemory(shm_id); // Попытка mmap по требованию
+    //         }
+    //         catch (const std::exception &e)
+    //         {
+    //             throw std::runtime_error("Server " + std::to_string(m_server_id) + ": Cannot read, memory shm_id " + std::to_string(shm_id) + " not mapped: " + e.what());
+    //         }
+    //         if (!mapping->mapped)
+    //             throw std::logic_error("Internal: Mapping failed unexpectedly after read attempt");
+    //     }
+
+    //     // 2. Проверить смещение и прочитать
+    //     if (offset >= mapping->size)
+    //     {
+    //         throw std::out_of_range("Server " + std::to_string(m_server_id) + ": Read offset " + std::to_string(offset) + " out of bounds for shm_id " + std::to_string(shm_id));
+    //     }
+    //     size_t available = mapping->size - offset;
+    //     size_t read_len = std::min(size_to_read, available);
+
+    //     if (read_len > 0)
+    //     {
+    //         memcpy(buffer, static_cast<const char *>(mapping->addr) + offset, read_len);
+    //     }
+    //     // Логирование чтения по желанию
+    //     return read_len;
+    // }
+
+    // std::vector<char> Server::readFromSubmemory(int shm_id, size_t offset, size_t size_to_read)
+    // {
+    //     std::vector<char> buffer(size_to_read);
+    //     size_t bytes_read = readFromSubmemory(shm_id, offset, buffer.data(), size_to_read);
+    //     buffer.resize(bytes_read);
+    //     return buffer;
+    // }
 
     std::string Server::getInfo() const
     {
         std::ostringstream oss;
-        oss << "  Server Name:   '" << name << "'\n";
-        oss << "  Server ID:     " << (server_id == -1 ? "N/A" : std::to_string(server_id)) << "\n";
-        oss << "  Initialized:   " << (initialized ? "Yes" : "No") << "\n";
-        if (!initialized)
+        oss << "  Server Name:   '" << m_name << "'\n";
+        oss << "  Server ID:     " << (m_server_id == -1 ? "N/A" : std::to_string(m_server_id)) << "\n";
+        oss << "  Initialized:   " << (m_initialized ? "Yes" : "No") << "\n";
+        if (!m_initialized)
             return oss.str();
 
-        oss << "  Connections (" << connections.size() << " slots):\n";
+        oss << "  Connections (" << m_connections.size() << " slots):\n";
         int active_conn_count = 0;
         bool conn_slot_used = false;
-        for (size_t i = 0; i < connections.size(); ++i)
+        for (size_t i = 0; i < m_connections.size(); ++i)
         {
-            if (connections[i].client_id != -1)
+            if (m_connections[i]->client_id != -1)
             { // Показываем только использованные слоты
                 conn_slot_used = true;
-                oss << "    Slot " << i << ": Client ID: " << std::left << std::setw(5) << connections[i].client_id
-                    << " -> SHM ID: " << std::setw(5) << connections[i].shm_id
-                    << " (Active: " << (connections[i].active ? "Yes" : "No ") << ")\n";
-                if (connections[i].active)
+                oss << "    Slot " << i << ": Client ID: " << std::left << std::setw(5) << m_connections[i]->client_id
+                    << " -> SHM ID: " << std::setw(5) << m_connections[i]->m_sub_mem_p.first
+                    << " (Active: " << (m_connections[i]->active ? "Yes" : "No ") << ")\n";
+                if (m_connections[i]->active)
                     active_conn_count++;
             }
         }
@@ -335,19 +368,20 @@ namespace ripc
             oss << "    (No connection slots used)\n";
         oss << "    (Total active connections: " << active_conn_count << ")\n";
 
-        oss << "  SHM Mappings (" << mappings.size() << " slots):\n";
+        oss << "  SHM Mappings (" << m_mappings.size() << " slots):\n";
         int mapped_count = 0;
         bool map_slot_used = false;
-        for (size_t i = 0; i < mappings.size(); ++i)
+        int i = 0;
+        for (auto &[id, submem] : m_mappings)
         {
-            if (mappings[i].shm_id != -1)
+            if (id != -1)
             { // Показываем только использованные слоты
                 map_slot_used = true;
-                oss << "    Slot " << i << ": SHM ID: " << std::left << std::setw(5) << mappings[i].shm_id
-                    << " -> Addr: " << std::left << std::setw(14) << (mappings[i].mapped ? mappings[i].addr : (void *)-1L)
-                    << " Size: " << std::left << std::setw(6) << (mappings[i].mapped ? mappings[i].size : 0)
-                    << " Mapped: " << (mappings[i].mapped ? "Yes" : "No ") << "\n";
-                if (mappings[i].mapped)
+                oss << "    Slot " << i++ << ": SHM ID: " << std::left << std::setw(5) << id
+                    << " -> Addr: " << std::left << std::setw(14) << (submem->m_is_mapped ? submem->m_addr : (void *)-1L)
+                    << " Size: " << std::left << std::setw(6) << (submem->m_is_mapped ? submem->m_size : 0)
+                    << " Mapped: " << (submem->m_is_mapped ? "Yes" : "No ") << "\n";
+                if (submem->m_is_mapped)
                     mapped_count++;
             }
         }
@@ -358,156 +392,187 @@ namespace ripc
         return oss.str();
     }
 
+    bool Server::registerCallback(UrlPattern &&url, UrlCallback &&callback)
+    {
+        auto [it, inserted] = m_urls.try_emplace(std::move(url), std::move(callback));
+        return inserted;
+    }
+
     // --- Обработка Уведомлений ---
     void Server::handleNotification(const notification_data &ntf)
     {
-        if (!initialized || ntf.m_reciver_id != this->server_id)
+        checkInitialized();
+        if (ntf.m_reciver_id != this->m_server_id)
             return;
         if (ntf.m_who_sends != CLIENT)
-            return; // Сервер реагирует только на клиентов
+            return;
+        if (!IS_ID_VALID(ntf.m_sender_id) || !IS_ID_VALID(ntf.m_sub_mem_id))
+            return;
 
-        // std::cout << "[Server " << server_id << " Handler] Received notification type " << ntf.m_type
-        //           << " from Client " << ntf.m_sender_id << " (SubMem: " << ntf.m_sub_mem_id << ")" << std::endl;
+        std::cout << "[Server " << m_server_id << " Handler] Received notification type " << ntf.m_type
+                  << " from Client " << ntf.m_sender_id << " (SubMem id: " << ntf.m_sub_mem_id << ")" << std::endl;
 
         switch (ntf.m_type)
         {
         case NEW_CONNECTION:
-            if (IS_ID_VALID(ntf.m_sender_id) && IS_ID_VALID(ntf.m_sub_mem_id))
-            {
-                internal_addOrUpdateConnection(ntf.m_sender_id, ntf.m_sub_mem_id);
-            }
-            else
-            {
-                std::cerr << "Server " << server_id << ": Invalid IDs in NEW_CONNECTION." << std::endl;
-            }
+            std::cout << "[Server " << m_server_id
+                      << " Handler]: Received NEW_CONNECTION notification from Client "
+                      << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id << std::endl;
+            addConnection(ntf.m_sender_id, ntf.m_sub_mem_id);
             break;
+
         case NEW_MESSAGE:
-            std::cout << "Server " << server_id << ": Received NEW_MESSAGE notification from Client "
+            std::cout << "[Server " << m_server_id
+                      << " Handler]: Received NEW_MESSAGE notification from Client "
                       << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
-                      << ". Use 'server <idx> read " << ntf.m_sub_mem_id << " ...' to view." << std::endl;
+                      << std::endl;
+            // вызваем обработчик нового сообщения
+            dispatchNewMessage(ntf);
             break;
         default:
-            std::cout << "Server " << server_id << ": Received unhandled notification type " << ntf.m_type << std::endl;
+            std::cout << "Server " << m_server_id << ": Received unhandled notification type " << ntf.m_type << std::endl;
             break;
         }
+    }
+
+    void Server::dispatchNewMessage(const notification_data &ntf)
+    {
+        checkInitialized();
+
+        // поиск нужного соединения
+        auto con = findConnection(ntf.m_sender_id);
+        auto &mem = con->m_sub_mem_p;
+
+        // читаем в буфер url
+        size_t url_size = 100;
+        char url_str[100];
+        size_t read_pos = 0;
+
+        // копируем url
+        if ((read_pos = mem.second->readUntil(0, url_str, url_size - 1, 4)) == 0)
+        {
+            throw std::runtime_error("Server::dispatchNewMessage: there is not URL in the message");
+        }
+        url_str[url_size - 1] = '\0';
+
+        // создаем url
+        Url url(url_str);
+
+        // копируем оставшееся послание
+        Buffer buf(mem.second->read(read_pos));
+
+        // ищем подходящий обработчик для этого url
+        bool found_callback = false;
+        for (auto &[pattern, callback] : m_urls)
+        {
+            if (pattern == url)
+            {
+                // отправляем ответ клиенту
+                writeToClient(con, std::move(callback(ntf, buf)));
+                found_callback = 1;
+                break;
+            }
+        }
+
+        if (!found_callback)
+            std::cerr << "[Server::dispatchNewMessage] There is no callback for url: " << url_str << std::endl;
     }
 
     // --- Реализация приватных хелперов ---
-    int Server::internal_findConnectionIndex(int client_id) const
+    // поиск соединения
+    std::shared_ptr<Server::ConnectionInfo> Server::findConnection(int client_id) const
     {
+        checkInitialized();
+
         if (!IS_ID_VALID(client_id))
-            return -1;
-        for (size_t i = 0; i < connections.size(); ++i)
+            throw std::invalid_argument("Invalid client_id: " + std::to_string(client_id));
+
+        for (auto &el : m_connections)
         {
-            // Ищем только активные соединения
-            if (connections[i].active && connections[i].client_id == client_id)
+            if (el->active && el->client_id == client_id)
             {
-                return static_cast<int>(i);
+                return el;
             }
         }
-        return -1;
+
+        return nullptr;
     }
 
-    ServerShmMapping *Server::internal_findOrCreateShmMapping(int shm_id)
+    // поиск или создание общей памяти
+    const std::pair<const int, std::shared_ptr<SubMem>> &Server::findOrCreateSHM(int shm_id)
     {
+        checkInitialized();
+
         if (!IS_ID_VALID(shm_id))
-            return nullptr;
-        int found_idx = -1;
-        int first_free_idx = -1;
-
-        for (size_t i = 0; i < mappings.size(); ++i)
         {
-            if (mappings[i].shm_id == shm_id)
-            { // Нашли существующий
-                found_idx = i;
-                break;
-            }
-            if (mappings[i].shm_id == -1 && first_free_idx == -1)
-            { // Нашли первый свободный
-                first_free_idx = i;
-            }
+            throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
+            // std::cerr << "Invalid shm_id: " << shm_id << std::endl;
+            // return std::nullopt;
         }
 
-        if (found_idx != -1)
-        { // Возвращаем существующий
-            return &mappings[found_idx];
+        if (m_mappings.size() >= DEFAULTS::MAX_SERVERS_MAPPING)
+        {
+            throw std::out_of_range("Not enough space for one more mapping in server: id: " + std::to_string(m_server_id));
+            // std::cerr << "Not enough space for one more mapping in server: id: " << server_id << std::endl;
+            // return std::nullopt;
         }
-        else if (first_free_idx != -1)
-        { // Используем свободный
-            mappings[first_free_idx].shm_id = shm_id;
-            mappings[first_free_idx].mapped = false;
-            mappings[first_free_idx].addr = MAP_FAILED;
-            mappings[first_free_idx].size = 0;
-            std::cout << "Server " << server_id << ": Created mapping slot for shm_id " << shm_id << " at index " << first_free_idx << "." << std::endl;
-            return &mappings[first_free_idx];
-        }
-        else
-        { // Нет места
-            std::cerr << "Server " << server_id << ": No mapping slots available for shm_id " << shm_id << "." << std::endl;
-            return nullptr;
-        }
+
+        // пытаемся добавить новую память
+        auto [it, inserted] = m_mappings.try_emplace(shm_id, std::make_shared<SubMem>(m_context));
+        if (!inserted)
+            throw std::out_of_range("SubMem with id: " + std::to_string(shm_id) + " already exist");
+
+        std::cout << "Server " << m_server_id << ": Created mapping slot for shm_id " << shm_id << std::endl;
+        return *it;
     }
 
-    void Server::internal_addOrUpdateConnection(int client_id, int shm_id)
+    void Server::addConnection(int client_id, int shm_id)
     {
-        int existing_idx = internal_findConnectionIndex(client_id);
+        checkInitialized();
 
-        if (existing_idx != -1)
-        { // Обновляем
-            if (connections[existing_idx].shm_id != shm_id)
-            {
-                std::cout << "Server " << server_id << ": Updating shm_id for client " << client_id << " to " << shm_id << std::endl;
-                connections[existing_idx].shm_id = shm_id;
-            }
-            // Убеждаемся, что маппинг есть и память отображена
-            ServerShmMapping *mapping = internal_findOrCreateShmMapping(shm_id);
-            if (mapping && !mapping->mapped)
-            {
-                try
-                {
-                    mmapSubmemory(shm_id);
-                }
-                catch (...)
-                {
-                }
-            }
+        // проверка id
+        if (!IS_ID_VALID(shm_id))
+            throw std::invalid_argument("Invalid shm_id: " + std::to_string(shm_id));
+        if (!IS_ID_VALID(client_id))
+            throw std::invalid_argument("Invalid client_id: " + std::to_string(client_id));
+
+        auto conn = findConnection(client_id);
+
+        // проверка на существование соединения
+        if (conn)
+        {
+            std::cerr << "Connection already exists. server id: "
+                      << std::to_string(m_server_id) << " client_id: "
+                      << std::to_string(client_id)
+                      << std::endl;
             return;
         }
 
-        // Ищем неактивный слот
-        int reuse_idx = -1;
-        for (size_t i = 0; i < connections.size(); ++i)
+        // проверка на количество соединений в сервере
+        if (m_connections.size() >= DEFAULTS::MAX_SERVERS_CONNECTIONS)
         {
-            if (!connections[i].active)
-            {
-                reuse_idx = i;
-                break;
-            }
+            std::cerr << "Too many connections in server id: "
+                      << std::to_string(m_server_id)
+                      << ". Cant create one more.\n";
+            return;
+        }
+        
+        // получаем память для этого соединения
+        auto &map = findOrCreateSHM(shm_id);
+        
+        // отображаем память, если не отображена
+        if (!map.second->m_is_mapped)
+        {
+            map.second->mmap(m_server_id, shm_id);
+            // mmapSubmemory(shm_id);
         }
 
-        if (reuse_idx != -1)
-        { // Нашли неактивный
-            std::cout << "Server " << server_id << ": Adding connection client " << client_id << " -> shm " << shm_id << " to slot " << reuse_idx << std::endl;
-            connections[reuse_idx].client_id = client_id;
-            connections[reuse_idx].shm_id = shm_id;
-            connections[reuse_idx].active = true;
-            // Убеждаемся, что маппинг есть и память отображена
-            ServerShmMapping *mapping = internal_findOrCreateShmMapping(shm_id);
-            if (mapping && !mapping->mapped)
-            {
-                try
-                {
-                    mmapSubmemory(shm_id);
-                }
-                catch (...)
-                {
-                }
-            }
-        }
-        else
-        { // Нет места
-            std::cerr << "Server " << server_id << ": No connection slots available for client " << client_id << "." << std::endl;
-        }
+        // создаем соединение
+        m_connections.emplace_back(std::make_shared<ConnectionInfo>(client_id, map));
+
+        std::cout << "Server " << m_server_id
+                  << ": Adding connection client " << client_id
+                  << " -> shm " << shm_id << std::endl;
     }
 
 } // namespace ripc

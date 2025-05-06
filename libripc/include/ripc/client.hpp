@@ -6,16 +6,11 @@
 #include <vector>
 #include <stdexcept> // Для исключений
 
-// MAP_FAILED может быть не определен без sys/mman.h
-#ifndef MAP_FAILED
-#define MAP_FAILED ((void *)-1)
-#endif
 
 namespace ripc
 {
-
-    class RipcContext;       // Прямое объявление
-    class RipcEntityManager; // Прямое объявление
+    class RipcContext;
+    class RipcEntityManager;
 
     // Класс, представляющий экземпляр клиента RIPC
     class Client
@@ -63,11 +58,16 @@ namespace ripc
         std::vector<char> read(size_t offset, size_t size_to_read);
 
         // --- Получение информации ---
+        // получение id
         int getId() const;
-        bool isInitialized() const; // Проверяет успешность init()
+        // Проверяет успешность init()
+        bool isInitialized() const; 
+        // есть ли подключение к серверу
         bool isConnected() const;
+        // отображена ли память
         bool isMapped() const;
-        std::string getInfo() const; // Форматированная строка для вывода
+        // Форматированная строка для вывода
+        std::string getInfo() const; 
 
         // --- Обработка уведомлений ---
         // Вызывается менеджером, если нет пользовательского обработчика

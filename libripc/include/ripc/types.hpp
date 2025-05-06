@@ -12,6 +12,11 @@
 #include "ripc.h"
 #include "id_pack.h" // Для IS_ID_VALID и т.д.
 
+// Если не определен map failed
+#ifndef MAP_FAILED
+#define MAP_FAILED ((void *)-1)
+#endif
+
 namespace ripc
 {
 
@@ -23,25 +28,30 @@ namespace ripc
     // --- Вспомогательные структуры (можно вынести из Server/Client) ---
 
     // Информация о подключении клиента на стороне сервера
-    struct ServerConnectionInfo
-    {
-        int client_id = -1;
-        int shm_id = -1;
-        bool active = false;
-    };
+    //struct ServerConnectionInfo
+    //{
+    //    int client_id = -1;
+    //    int shm_id = -1;
+    //    bool active = false;
+    //};
 
     // Информация об отображенной submemory на стороне сервера
-    struct ServerShmMapping
-    {
-        int shm_id = -1;
-        void *addr = reinterpret_cast<void *>(-1); // MAP_FAILED
-        size_t size = 0;
-        bool mapped = false;
-    };
+    //struct ServerShmMapping
+    //{
+    //    int shm_id = -1;
+    //    void *addr = MAP_FAILED; //reinterpret_cast<void *>(-1);
+    //    size_t size = 0;
+    //    bool mapped = false;
+    //};
 
-    // --- Константы библиотеки (можно добавить свои) ---
-    constexpr int DEFAULT_MAX_SERVERS = 16;
-    constexpr int DEFAULT_MAX_CLIENTS = 128;
+    // --- Константы библиотеки ---
+    namespace DEFAULTS
+    {
+        constexpr int MAX_SERVERS = 16;
+        constexpr int MAX_SERVERS_MAPPING = 16;
+        constexpr int MAX_SERVERS_CONNECTIONS = 16;
+        constexpr int MAX_CLIENTS = 128;
+    };
 
 } // namespace ripc
 

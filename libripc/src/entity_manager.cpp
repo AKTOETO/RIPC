@@ -479,18 +479,28 @@ namespace ripc
     }
 
     // --- Установка лимитов (статические методы) ---
-    void RipcEntityManager::setGlobalServerLimit(size_t limit)
-    {
-        std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-        getInstance().max_servers = limit;
-        std::cout << "Global server limit set to " << limit << std::endl;
-    }
+    // void RipcEntityManager::setGlobalServerLimit(size_t limit)
+    // {
+    //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
+    //     if(getInstance().is_initialized) 
+    //     {
+    //         std::cerr << "Ripc library should not be initialized for changing server limit\n";
+    //         return;
+    //     }
+    //     getInstance().max_servers = limit;
+    //     std::cout << "Global server limit set to " << limit << std::endl;
+    // }
 
-    void RipcEntityManager::setGlobalClientLimit(size_t limit)
-    {
-        std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-        getInstance().max_clients = limit;
-        std::cout << "Global client limit set to " << limit << std::endl;
-    }
+    // void RipcEntityManager::setGlobalClientLimit(size_t limit)
+    // {
+    //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
+    //     if(getInstance().is_initialized) 
+    //     {
+    //         std::cerr << "Ripc library should not be initialized for changing client limit\n";
+    //         return;
+    //     }
+    //     getInstance().max_clients = limit;
+    //     std::cout << "Global client limit set to " << limit << std::endl;
+    // }
 
 } // namespace ripc
