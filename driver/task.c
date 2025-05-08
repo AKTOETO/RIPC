@@ -72,9 +72,6 @@ void notification_delete(struct notification_t *notif)
         notif->data.m_sender_id,
         notif->data.m_reciver_id);
 
-    // удаление уведомления из списка в зарегистированной структуре
-    list_del(&notif->list);
-
     kfree(notif);
 }
 
@@ -233,6 +230,17 @@ void clients_list_t_delete(
     INF("Deleted clients_list_t");
 }
 
+int reg_task_get_notif_count(struct reg_task_t *reg_task)
+{
+    if(!reg_task)
+    {
+        ERR("task ptr is null");
+        return -1;
+    }
+
+    return atomic_read(&reg_task->m_num_of_notif);
+}
+
 struct reg_task_t *reg_task_create(void)
 {
     struct task_struct *task = current;
@@ -266,8 +274,11 @@ struct reg_task_t *reg_task_create(void)
     INIT_LIST_HEAD(&reg_task->list);
     INIT_LIST_HEAD(&reg_task->m_clients);
     INIT_LIST_HEAD(&reg_task->m_notif_list);
+    mutex_init(&reg_task->m_notif_list_lock);
+    atomic_set(&reg_task->m_num_of_notif, 0);
     INIT_LIST_HEAD(&reg_task->m_servers);
     init_waitqueue_head(&reg_task->m_wait_queue);
+    mutex_init(&reg_task->m_wait_queue_lock);
     reg_task->m_task_p = task;
 
     // добавление в глобальный список
@@ -349,12 +360,15 @@ void reg_task_delete(struct reg_task_t *reg_task)
     // удаляем список уведомлений
     if (!list_empty(&reg_task->m_notif_list))
     {
+        mutex_lock(&reg_task->m_notif_list_lock);
         INF("Deleting notifications");
         struct notification_t *notif, *notif_tmp;
         list_for_each_entry_safe(notif, notif_tmp, &reg_task->m_notif_list, list)
         {
+            atomic_dec(&reg_task->m_num_of_notif);
             notification_delete(notif);
         }
+        mutex_unlock(&reg_task->m_notif_list_lock);
     }
 
     if (reg_task->m_task_p)
@@ -460,7 +474,10 @@ int reg_task_add_notification(
 
     INF("Adding new notification to task (PID:%d)", reg_task->m_task_p->pid);
 
-    list_add(&reg_task->m_notif_list, &notif->list);
+    mutex_lock(&reg_task->m_notif_list_lock);
+    list_add_tail(&notif->list, &reg_task->m_notif_list);
+    atomic_inc(&reg_task->m_num_of_notif);
+    mutex_unlock(&reg_task->m_notif_list_lock);
 
     reg_task_notify_all(reg_task);
     return 0;
@@ -482,15 +499,21 @@ struct notification_t *reg_task_get_notification(struct reg_task_t *reg_task)
         return NULL;
     }
 
+    mutex_lock(&reg_task->m_notif_list_lock);
     // получение уведомления
     struct notification_t *notif =
         list_first_entry(&reg_task->m_notif_list, struct notification_t, list);
-
     if (notif == NULL)
     {
+        mutex_unlock(&reg_task->m_notif_list_lock);
         ERR("Couldnt get notification");
         return NULL;
     }
+    atomic_dec(&reg_task->m_num_of_notif);
+
+    // удаление уведомления из списка в зарегистированной структуре
+    list_del(&notif->list);
+    mutex_unlock(&reg_task->m_notif_list_lock);
 
     return notif;
 }
@@ -505,7 +528,10 @@ int reg_task_is_notif_pending(struct reg_task_t *reg_task)
 
     // если что-то есть в списке,
     // значит еще есть не отправленные уведомления
-    return !list_empty(&reg_task->m_notif_list);
+    mutex_lock(&reg_task->m_notif_list_lock);
+    int res = !list_empty(&reg_task->m_notif_list);
+    mutex_unlock(&reg_task->m_notif_list_lock);
+    return res;
 }
 
 void reg_task_notify_all(struct reg_task_t *reg_task)
@@ -516,5 +542,7 @@ void reg_task_notify_all(struct reg_task_t *reg_task)
         return;
     }
 
+    mutex_lock(&reg_task->m_wait_queue_lock);
     wake_up_interruptible(&reg_task->m_wait_queue);
+    mutex_unlock(&reg_task->m_wait_queue_lock);
 }

@@ -3,6 +3,7 @@
 
 #include <linux/list.h>
 #include <linux/wait.h>
+#include <linux/atomic.h>
 
 #include "connection.h"
 #include "err.h"
@@ -18,7 +19,7 @@ extern struct list_head g_reg_task_list;
 extern struct mutex g_reg_task_lock;
 
 /**
- * Структура отправденного уведомления
+ * Структура отправленного уведомления
  */
 struct notification_t
 {
@@ -98,15 +99,21 @@ struct reg_task_t
 {
     struct task_struct *m_task_p;
     struct list_head m_notif_list;
+    struct mutex m_notif_list_lock; // блокировка доступа к списку уведомлений
+    atomic_t m_num_of_notif;        // количество уведомлений в списке
     struct list_head m_servers;
     struct list_head m_clients;
     wait_queue_head_t m_wait_queue; // для блокировки процесса при poll ожидании
+    struct mutex m_wait_queue_lock; // блокировка доступа к очереди ожидания
     struct list_head list;
 };
 
 /**
  * Функции работы с регистрацией процессов
  */
+
+// получение размера очереди уведомлений
+int reg_task_get_notif_count(struct reg_task_t* reg_task);
 
 // Создание зарегистрированного процесса
 struct reg_task_t *

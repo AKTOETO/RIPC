@@ -96,7 +96,13 @@ namespace ripc
 
     Url::Url(const std::string &url)
         : IUrl(url)
-    {}
+    {
+    }
+
+    Url::Url(const char *url)
+        : IUrl(url)
+    {
+    }
 
     DynTok::Url Url::processDynTok(const std::string &tok)
     {
@@ -199,7 +205,13 @@ namespace ripc
 
     UrlPattern::UrlPattern(const std::string &pattern)
         : IUrl(pattern)
-    {}
+    {
+    }
+
+    UrlPattern::UrlPattern(const char *url)
+        : IUrl(url)
+    {
+    }
 
     DynTok::UrlPattern UrlPattern::processDynTok(const std::string &tok)
     {
@@ -306,9 +318,13 @@ namespace ripc
     //--- Сравнение паттерна с url ---
     bool operator==(const Url &url, const UrlPattern &pattern)
     {
+        std::cout << "\toperator==: Compairing url '" << url
+                  << "' with pattern '" << pattern << "'\n";
         // если длина не равна, то они не равны
         if (pattern.m_pattern.size() != url.m_pattern.size())
             return false;
+
+        std::cout << "\toperator==: token size in url: " << url.m_pattern.size() << std::endl;
 
         // сравниваем каждый токен
         for (int i = 0; i < pattern.m_pattern.size(); i++)
@@ -318,7 +334,12 @@ namespace ripc
                  std::holds_alternative<std::string>(url.m_pattern[i])) &&
                 (std::get<std::string>(pattern.m_pattern[i]) ==
                  std::get<std::string>(url.m_pattern[i])))
+            {
+                std::cout << "\toperator==: static url: '"
+                          << std::get<std::string>(url.m_pattern[i]) << "' pattern: '"
+                          << std::get<std::string>(pattern.m_pattern[i]) << "'\n";
                 return true;
+            }
             // если там динамический параметр
             else if (std::holds_alternative<DynTok::UrlPattern>(pattern.m_pattern[i]) &&
                      std::holds_alternative<DynTok::Url>(url.m_pattern[i]))
@@ -326,11 +347,25 @@ namespace ripc
                 // если динамический параметр является строкой
                 if ((std::get<DynTok::UrlPattern>(pattern.m_pattern[i]) == DynTok::UrlPattern::STRING) &&
                     std::holds_alternative<std::string>(std::get<DynTok::Url>(url.m_pattern[i])))
+                {
+
+                    std::cout << "\toperator==: dyn str url: '"
+                              << std::get<std::string>(std::get<DynTok::Url>(url.m_pattern[i]))
+                              << "' pattern: '"
+                              << (int)std::get<DynTok::UrlPattern>(pattern.m_pattern[i]) << "'\n";
                     return true;
+                }
                 // если динамический параметр является целым числом
                 else if ((std::get<DynTok::UrlPattern>(pattern.m_pattern[i]) == DynTok::UrlPattern::INT) &&
                          std::holds_alternative<int>(std::get<DynTok::Url>(url.m_pattern[i])))
+                {
+
+                    std::cout << "\toperator==: dyn int url: '"
+                              << std::get<int>(std::get<DynTok::Url>(url.m_pattern[i]))
+                              << "' pattern: '"
+                              << (int)std::get<DynTok::UrlPattern>(pattern.m_pattern[i]) << "'\n";
                     return true;
+                }
 
                 else
                 {
@@ -357,4 +392,3 @@ namespace ripc
         return p1.m_pattern < p2.m_pattern;
     }
 } // namespace ripc
-

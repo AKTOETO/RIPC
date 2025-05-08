@@ -19,9 +19,10 @@ namespace ripc
     // Приватный конструктор
     Server::Server(RipcContext &ctx, const std::string &server_name)
         : m_context(ctx), m_name(server_name),
-          m_connections(DEFAULTS::MAX_SERVERS),
+          m_connections{},
           m_mappings(DEFAULTS::MAX_SERVERS_MAPPING)
     {
+        m_connections.reserve(DEFAULTS::MAX_SERVERS_CONNECTIONS);
         if (m_name.empty() || m_name.length() >= MAX_SERVER_NAME)
         {
             throw std::invalid_argument("Invalid server name.");
@@ -63,7 +64,9 @@ namespace ripc
     {
         std::cout << "Server '" << m_name << "' (ID: " << m_server_id << ") destructing..." << std::endl;
         // cleanup_mappings();
-        //  Отмена регистрации в ядре делается менеджером
+
+        // TODO:
+        //  Отмена регистрации в драйвере должна быть тут
     }
 
     // Приватная очистка mmap
@@ -161,6 +164,7 @@ namespace ripc
 
     size_t Server::writeToClient(std::shared_ptr<ConnectionInfo> con, Buffer &&result)
     {
+        std::cout << "Server::WriteToClient: sending answer to client" << std::endl;
         checkInitialized();
         if (!con)
             throw std::invalid_argument("Server::writeToClient: empty connection ptr");
@@ -173,7 +177,7 @@ namespace ripc
             throw std::runtime_error("Server::writeToClient: mem is not mapped");
 
         // пишем в память данные
-        size_t write_len = mem.second->write(0, result.data(), result.length());
+        size_t write_len = mem.second->write(0, result.data(), result.size());
 
         // отправляем уведомление
         u32 packed_id = pack_ids(m_server_id, mem.first);
@@ -379,7 +383,7 @@ namespace ripc
                 map_slot_used = true;
                 oss << "    Slot " << i++ << ": SHM ID: " << std::left << std::setw(5) << id
                     << " -> Addr: " << std::left << std::setw(14) << (submem->m_is_mapped ? submem->m_addr : (void *)-1L)
-                    << " Size: " << std::left << std::setw(6) << (submem->m_is_mapped ? submem->m_size : 0)
+                    << " Size: " << std::left << std::setw(6) << (submem->m_is_mapped ? submem->m_max_size : 0)
                     << " Mapped: " << (submem->m_is_mapped ? "Yes" : "No ") << "\n";
                 if (submem->m_is_mapped)
                     mapped_count++;
@@ -392,9 +396,13 @@ namespace ripc
         return oss.str();
     }
 
-    bool Server::registerCallback(UrlPattern &&url, UrlCallback &&callback)
+    bool Server::registerCallback(const UrlPattern &url, UrlCallback &&callback)
     {
-        auto [it, inserted] = m_urls.try_emplace(std::move(url), std::move(callback));
+        auto [it, inserted] = m_urls.try_emplace(url.getUrl(), std::move(callback));
+        if (inserted)
+            std::cout << "Server::registerCallback: callback to '" << url << "' registered\n";
+        else
+            std::cout << "Server::registerCallback: callback to '" << url << "' NOT registered\n";
         return inserted;
     }
 
@@ -441,6 +449,9 @@ namespace ripc
 
         // поиск нужного соединения
         auto con = findConnection(ntf.m_sender_id);
+        if (!con)
+            throw std::logic_error(
+                "Server::dispatchNewMessage: doesnt have conection to client: " + std::to_string(ntf.m_sender_id));
         auto &mem = con->m_sub_mem_p;
 
         // читаем в буфер url
@@ -457,9 +468,15 @@ namespace ripc
 
         // создаем url
         Url url(url_str);
+        std::cout << "Server::dispatchNewMessage: url: [" << url << "]\n";
 
         // копируем оставшееся послание
-        Buffer buf(mem.second->read(read_pos));
+        // Buffer buf(mem.second->read(read_pos));
+        Buffer buf(*mem.second, read_pos);
+        std::cout << "Server::dispatchNewMessage: last part of buffer: [" << buf << "]\n";
+
+        //  Создаем выходной буфер
+        Buffer out;
 
         // ищем подходящий обработчик для этого url
         bool found_callback = false;
@@ -467,8 +484,12 @@ namespace ripc
         {
             if (pattern == url)
             {
+                // вычисляем ответ
+                std::cout << "Server::dispatchNewMessage: calling the callback" << std::endl;
+                callback(ntf, buf, out);
+
                 // отправляем ответ клиенту
-                writeToClient(con, std::move(callback(ntf, buf)));
+                writeToClient(con, std::move(out));
                 found_callback = 1;
                 break;
             }
@@ -489,7 +510,7 @@ namespace ripc
 
         for (auto &el : m_connections)
         {
-            if (el->active && el->client_id == client_id)
+            if (el && el->active && el->client_id == client_id)
             {
                 return el;
             }
@@ -499,7 +520,7 @@ namespace ripc
     }
 
     // поиск или создание общей памяти
-    const std::pair<const int, std::shared_ptr<SubMem>> &Server::findOrCreateSHM(int shm_id)
+    const std::pair<const int, std::shared_ptr<Memory>> &Server::findOrCreateSHM(int shm_id)
     {
         checkInitialized();
 
@@ -518,7 +539,7 @@ namespace ripc
         }
 
         // пытаемся добавить новую память
-        auto [it, inserted] = m_mappings.try_emplace(shm_id, std::make_shared<SubMem>(m_context));
+        auto [it, inserted] = m_mappings.try_emplace(shm_id, std::make_shared<Memory>(m_context));
         if (!inserted)
             throw std::out_of_range("SubMem with id: " + std::to_string(shm_id) + " already exist");
 
@@ -551,15 +572,15 @@ namespace ripc
         // проверка на количество соединений в сервере
         if (m_connections.size() >= DEFAULTS::MAX_SERVERS_CONNECTIONS)
         {
-            std::cerr << "Too many connections in server id: "
+            std::cerr << "Server::addConnection: Too many connections in server id: "
                       << std::to_string(m_server_id)
                       << ". Cant create one more.\n";
             return;
         }
-        
+
         // получаем память для этого соединения
         auto &map = findOrCreateSHM(shm_id);
-        
+
         // отображаем память, если не отображена
         if (!map.second->m_is_mapped)
         {

@@ -18,18 +18,21 @@ namespace ripc
 
         // список токенов из url
         std::vector<Token> m_pattern;
+        // url в виде строки
+        std::string m_url;
 
         // разбиение паттерна на части
         void subdivide(const std::string &str);
         virtual DynTok processDynTok(const std::string &tok) = 0;
 
     public:
-        IUrl(const std::string &pattern) { subdivide(pattern); }
-        
+        IUrl(const std::string &pattern) : m_url(pattern) { subdivide(m_url); }
+        IUrl(const char *pattern) : m_url(pattern) { subdivide(m_url); }
+
         // запрет копирования
         IUrl(const IUrl &) = delete;
         IUrl &operator=(const IUrl &) = delete;
-        
+
         // разрешаем перемещение
         IUrl(IUrl &&other) noexcept = default;
         IUrl &operator=(IUrl &&other) noexcept = default;
@@ -37,10 +40,21 @@ namespace ripc
         // получить список токенов
         const std::vector<Token> &getTokens() const { return m_pattern; }
 
+        // получить URL строкой
+        const std::string &getUrl() const { return m_url; }
+
         // сравнение двух паттернов
         bool operator<(const IUrl &pat) { return m_pattern < pat.m_pattern; }
-    };
 
+        
+        // вывод в поток
+        friend std::ostream &operator<<(std::ostream &out, const IUrl &url)
+        {
+            out << url.m_url;
+            return out;
+        }
+    };
+    
     // токенизированный url
     namespace DynTok
     {
@@ -61,6 +75,7 @@ namespace ripc
 
     public:
         Url(const std::string &pattern);
+        Url(const char *pattern);
 
         friend bool operator==(const Url &url, const UrlPattern &pattern);
         friend bool operator==(const UrlPattern &pattern, const Url &url);
@@ -74,10 +89,11 @@ namespace ripc
 
     public:
         UrlPattern(const std::string &pattern);
+        UrlPattern(const char *pattern);
 
         friend bool operator==(const Url &url, const UrlPattern &pattern);
         friend bool operator==(const UrlPattern &pattern, const Url &url);
-        friend bool operator<(const  UrlPattern &p1, const UrlPattern &p2);
+        friend bool operator<(const UrlPattern &p1, const UrlPattern &p2);
     };
 
     // --- IURL ---

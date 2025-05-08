@@ -476,6 +476,10 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
         return -ENOENT;
     }
 
+    // печать размер очереди уведомлений
+    int notif_count = reg_task_get_notif_count(reg_task);
+    INF("(PID:%d) notif count: %d", reg_task->m_task_p->pid, notif_count);
+
     // структура уведомления
     struct notification_t *notif;
     ssize_t size = 0;
@@ -525,7 +529,9 @@ static __poll_t ipc_poll(struct file *filp, poll_table *wait)
     __poll_t mask = 0;
 
     // блокируем процесс
+    mutex_lock(&reg_task->m_wait_queue_lock);
     poll_wait(filp, &reg_task->m_wait_queue, wait);
+    mutex_unlock(&reg_task->m_wait_queue_lock);
 
     int ret = reg_task_is_notif_pending(reg_task);
 

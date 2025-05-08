@@ -332,12 +332,14 @@ namespace ripc
             {
                 if (ntf.m_who_sends == CLIENT)
                 { // К серверу
+                    std::cout<<"RipcEntityManager::dispatchNotification: send notification to server\n";
                     auto it_srv = servers.find(receiver_id);
                     if (it_srv != servers.end())
-                        target_server = it_srv->second.get();
+                    target_server = it_srv->second.get();
                 }
                 else if (ntf.m_who_sends == SERVER)
                 { // К клиенту
+                    std::cout<<"RipcEntityManager::dispatchNotification: send notification to client\n";
                     auto it_cli = clients.find(receiver_id);
                     if (it_cli != clients.end())
                         target_client = it_cli->second.get();

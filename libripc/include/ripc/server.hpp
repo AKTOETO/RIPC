@@ -20,23 +20,24 @@ namespace ripc
     class RipcEntityManager; // Прямое объявление
 
     // создаем буфер нужного размера
-    class Buffer : private std::string
-    {
-    public:
-        Buffer() : std::string(SHM_REGION_PAGE_SIZE, '\0') {}
-        Buffer(const char *str) : std::string(str) {};
-        Buffer(const std::string &str) : std::string(str) {};
-        char &operator[](size_t i) { return std::string::operator[](i); }
-        size_t size() { return std::string::size(); }
-        size_t length() { return std::string::length(); }
-        char *data() { return std::string::data(); }
-    };
+    // class Buffer : private std::string
+    // {
+    // public:
+    //     Buffer() : std::string(SHM_REGION_PAGE_SIZE, '\0') {}
+    //     Buffer(const char *str) : std::string(str) {};
+    //     Buffer(const std::string &str) : std::string(str) {};
+    //     char &operator[](size_t i) { return std::string::operator[](i); }
+    //     size_t size() { return std::string::size(); }
+    //     size_t length() { return std::string::length(); }
+    //     char *data() { return std::string::data(); }
+    // };
 
     // Класс, представляющий экземпляр сервера RIPC
     class Server
     {
     private:
         friend class RipcEntityManager;
+        using UrlCallback = std::function<void(const notification_data &, const Buffer &, Buffer &)>;
 
         int m_server_id = -1;
         std::string m_name;
@@ -46,19 +47,18 @@ namespace ripc
         struct ConnectionInfo
         {
             int client_id = -1;
-            const std::pair<const int, std::shared_ptr<SubMem>> &m_sub_mem_p;
+            const std::pair<const int, std::shared_ptr<Memory>> &m_sub_mem_p;
             bool active = false;
-            ConnectionInfo(int client_id, const std::pair<const int, std::shared_ptr<SubMem>> &sub_mem) : client_id(client_id), m_sub_mem_p(sub_mem), active(true) {}
+            ConnectionInfo(int client_id, const std::pair<const int, std::shared_ptr<Memory>> &sub_mem) : client_id(client_id), m_sub_mem_p(sub_mem), active(true) {}
         };
 
         // список соединений
         std::vector<std::shared_ptr<ConnectionInfo>> m_connections; // std::vector<ServerConnectionInfo> connections;
         // список общих памятей
-        std::unordered_map<int, std::shared_ptr<SubMem>> m_mappings; // std::vector<ServerShmMapping> mappings;
+        std::unordered_map<int, std::shared_ptr<Memory>> m_mappings; // std::vector<ServerShmMapping> mappings;
 
         // список колбеков на url определенные
         // using Buffer = std::string;
-        using UrlCallback = std::function<Buffer(const notification_data &, const Buffer &)>;
         std::map<UrlPattern, UrlCallback> m_urls;
 
         // Приватный конструктор
@@ -73,7 +73,7 @@ namespace ripc
         // Приватные хелперы для управления соединениями/маппингами
         void addConnection(int client_id, int shm_id);
         std::shared_ptr<Server::ConnectionInfo> findConnection(int client_id) const;
-        const std::pair<const int, std::shared_ptr<SubMem>> &findOrCreateSHM(int shm_id);
+        const std::pair<const int, std::shared_ptr<Memory>> &findOrCreateSHM(int shm_id);
 
         // Приватный метод для проверки состояния
         void checkInitialized() const;
@@ -104,7 +104,7 @@ namespace ripc
         const std::string &getName() const;
         bool isInitialized() const;
         std::string getInfo() const;
-        bool registerCallback(UrlPattern &&url, UrlCallback &&callback);
+        bool registerCallback(const UrlPattern &url, UrlCallback &&callback);
     };
 
 } // namespace ripc
