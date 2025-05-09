@@ -44,6 +44,7 @@ enum notif_type
     TYPE_MIN,
     NEW_CONNECTION,
     NEW_MESSAGE,
+    REMOTE_DISCONNECT,
     TYPE_MAX
 };
 #define IS_NTF_TYPE_VALID(sender) (sender > TYPE_MIN && sender < TYPE_MAX)

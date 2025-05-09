@@ -75,6 +75,49 @@ void server_add_task(struct server_t *srv, struct servers_list_t *task)
     srv->m_task_p = task;
 }
 
+void server_cleanup_connection(struct server_t *srv, struct serv_conn_list_t *scon)
+{
+    if (!srv || !scon)
+    {
+        ERR("Invalid params");
+        return;
+    }
+
+    // проверка на принадлежность соединения серверу
+    if (scon->conn->m_server_p != srv)
+    {
+        ERR("ABORT: Server is not the owner of this connection");
+        return;
+    }
+
+    // удаление соединения
+    mutex_lock(&srv->m_con_list_lock);
+
+    struct connection_t *conn = scon->conn;
+    list_del(&scon->list);
+    kfree(scon);
+
+    if (conn)
+    {
+        INF("Processing connection for client %d, sub_mem %d",
+            conn->m_client_p ? conn->m_client_p->m_id : -1,
+            conn->m_mem_p ? conn->m_mem_p->m_id : -1);
+        // Вызываем delete_connection, которая обработает и другую сторону
+        // и удалит соединение из глобального списка.
+        // Разблокируем мьютекс сервера перед вызовом, т.к. delete_connection
+        // может блокировать глобальный список соединений.
+        mutex_unlock(&srv->m_con_list_lock);
+        delete_connection(conn);           // Удалит соединение, отсоединит sub_mem и клиента
+        mutex_lock(&srv->m_con_list_lock); // Снова блокируем для след. итерации
+    }
+    else
+    {
+        INF("Found NULL connection pointer in server's connection list");
+    }
+
+    mutex_unlock(&srv->m_con_list_lock);
+}
+
 void server_cleanup_connections(struct server_t *srv)
 {
     struct serv_conn_list_t *srv_conn_entry, *tmp;
@@ -86,29 +129,11 @@ void server_cleanup_connections(struct server_t *srv)
     mutex_lock(&srv->m_con_list_lock); // Блокируем список соединений сервера
     list_for_each_entry_safe(srv_conn_entry, tmp, &srv->connection_list.list, list)
     {
-        struct connection_t *conn = srv_conn_entry->conn;
 
-        // Удаляем элемент из списка сервера ДО вызова delete_connection
-        list_del(&srv_conn_entry->list);
-        kfree(srv_conn_entry); // Освобождаем элемент списка
+        mutex_unlock(&srv->m_con_list_lock);
+        server_cleanup_connection(srv, srv_conn_entry);
+        mutex_lock(&srv->m_con_list_lock);
 
-        if (conn)
-        {
-            INF("Processing connection for client %d, sub_mem %d",
-                conn->m_client_p ? conn->m_client_p->m_id : -1,
-                conn->m_mem_p ? conn->m_mem_p->m_id : -1);
-            // Вызываем delete_connection, которая обработает и другую сторону
-            // и удалит соединение из глобального списка.
-            // Разблокируем мьютекс сервера перед вызовом, т.к. delete_connection
-            // может блокировать глобальный список соединений.
-            mutex_unlock(&srv->m_con_list_lock);
-            delete_connection(conn);           // Удалит соединение, отсоединит sub_mem и клиента
-            mutex_lock(&srv->m_con_list_lock); // Снова блокируем для след. итерации
-        }
-        else
-        {
-            INF("Found NULL connection pointer in server's connection list");
-        }
     }
     mutex_unlock(&srv->m_con_list_lock); // Финальная разблокировка
     INF("Finished cleaning connections for server %d", srv->m_id);

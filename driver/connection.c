@@ -110,6 +110,8 @@ void delete_connection(struct connection_t *conn)
         return;
     }
 
+    int ret = 0;
+
     INF("Deleting connection: ClientID=%d, ServerID=%d, SubMemID=%d",
         conn->m_client_p ? conn->m_client_p->m_id : -1,
         conn->m_server_p ? conn->m_server_p->m_id : -1,
@@ -130,6 +132,12 @@ void delete_connection(struct connection_t *conn)
         {
             conn->m_client_p->m_conn_p = NULL;
             INF("Cleared connection pointer in client %d", conn->m_client_p->m_id);
+
+            // отправляем уведомление клиенту 
+            if((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)) != 0)
+            {
+                ERR("Bad notification sending. code: %d", ret);
+            }
         }
         else
         {
@@ -142,19 +150,6 @@ void delete_connection(struct connection_t *conn)
     // отсоединение от сервера
     if (conn->m_server_p)
     {
-        // struct serv_conn_list_t *cn = server_find_conn(con->m_server_p, con);
-        // if (!cn)
-        // {
-        //     ERR("Server's connection has not connection ptr");
-        // }
-        // else
-        // {
-        //     INF("disconnect server from connection");
-        //     server_delete_connection(con->m_server_p, cn);
-        //     // cn->conn = NULL;
-        //     // server_destroy(con->m_server_p);
-        // }
-
         // Клиент ушел, уведомляем сервер и удаляем из его списка
         struct serv_conn_list_t *srv_conn_entry;
         INF("Removing connection from server %d's list", conn->m_server_p->m_id);
@@ -163,6 +158,12 @@ void delete_connection(struct connection_t *conn)
         mutex_lock(&conn->m_server_p->m_con_list_lock);
         if (srv_conn_entry)
         {
+            // отправляем уведомление Серверу 
+            if((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)) != 0)
+            {
+                ERR("Bad notification sending. code: %d", ret);
+            }
+
             list_del(&srv_conn_entry->list); // Удаляем из списка сервера
             kfree(srv_conn_entry);           // Освобождаем элемент списка
             INF("Connection removed from server %d list.", conn->m_server_p->m_id);
@@ -174,14 +175,6 @@ void delete_connection(struct connection_t *conn)
         mutex_unlock(&conn->m_server_p->m_con_list_lock);
         conn->m_server_p = NULL; // Обнуляем в соединении
     }
-
-    // // отсоединение от памяти
-    // if (con->m_mem_p)
-    // {
-    //     INF("Disconnect submem");
-    //     submem_disconnect(con->m_mem_p, con);
-    //     con->m_mem_p = NULL;
-    // }
 
     // удаление из общего списка
     mutex_lock(&g_conns_lock);

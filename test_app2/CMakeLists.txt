@@ -8,7 +8,7 @@ add_executable(${NAME} app.cpp)
 target_link_libraries(${NAME} PRIVATE ripc)
 
 # Добавляем флаги компиляции для теста
-target_compile_options(${NAME} PRIVATE -Wall -Wextra -g -fsanitize=address -fno-omit-frame-pointer) # Например, отладка
+target_compile_options(${NAME} PRIVATE -Wall -Wextra -g -fsanitize=address -fno-omit-frame-pointer -march=native) # Например, отладка
 target_link_options(${NAME} PRIVATE -fsanitize=address -fno-omit-frame-pointer) 
 
 # --- Установка ---

@@ -79,7 +79,8 @@ int notification_send(enum notif_sender sender,
                       enum notif_type type,
                       struct connection_t *con)
 {
-    if (!IS_NTF_SEND_VALID(sender) || !IS_NTF_TYPE_VALID(type) || !con)
+    if (!IS_NTF_SEND_VALID(sender) || !IS_NTF_TYPE_VALID(type) ||
+        !con || !con->m_mem_p || !con->m_client_p || !con->m_server_p)
     {
         ERR("Param error");
         return -ENOPARAM;
@@ -232,7 +233,7 @@ void clients_list_t_delete(
 
 int reg_task_get_notif_count(struct reg_task_t *reg_task)
 {
-    if(!reg_task)
+    if (!reg_task)
     {
         ERR("task ptr is null");
         return -1;

@@ -38,16 +38,13 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     INF("=== new ioctl request ===");
     struct reg_task_t *reg_task = filp->private_data;
-    int ret = 0;
     struct server_t *server = NULL;
     struct client_t *client = NULL;
     struct connection_t *conn = NULL;
-    // struct notification_t *ntf = NULL;
-    //  struct kernel_siginfo sig_info; // для отправки сигнала
-    //  int packed_id = -1;
-    //  int sig_ret = -1;
-    //  struct client_t *client2 = NULL;
-    //  struct shm_t *shm = NULL;
+    struct serv_conn_list_t *scon = NULL;
+    int sub_mem_id;
+    int server_id;
+    int ret = 0;    
 
     // для регистрации сервера
     struct server_registration reg;
@@ -225,9 +222,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_SERVER_END_WRITING:
 
-        // Получение id клиента из аргумента
-        int server_id;
-        int sub_mem_id;
+        // Получение id сервера и памяти из аргумента
         UNPACK_SC_SHM((u32)arg, server_id, sub_mem_id);
 
         // поиск нужного сервера
@@ -264,6 +259,94 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         {
             ERR("sending notif failed");
         }
+        break;
+
+    case IOCTL_CLIENT_DISCONNECT:
+        // Получение id клиента из аргумента
+        int client_id = unpack_id1((u32)arg);
+
+        // поиск нужного клиента
+        client = find_client_by_id(client_id);
+
+        // проверка на получение клиента
+        if (!client)
+        {
+            ERR("There is no client with id: %d", client_id);
+            return -ENOENT;
+        }
+
+        // получение соединения
+        conn = client->m_conn_p;
+
+        if (!conn)
+        {
+            ERR("There is no connection in client (ID:%d)(PID:%d)",
+                client_id, reg_task->m_task_p->pid);
+            return -ENOENT;
+        }
+
+        // уведомляем сервер о разрыве соединения
+        if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)))
+        {
+            ERR("sending notif failed");
+        }
+
+        // отключаемся от сервера
+        client_cleanup_connection(client);
+        break;
+
+    case IOCTL_SERVER_DISCONNECT:
+
+        // Получение id сервера и памяти из аргумента
+        UNPACK_SC_SHM((u32)arg, server_id, sub_mem_id);
+
+        // поиск нужного сервера
+        server = find_server_by_id_pid(server_id, current->pid);
+
+        // если сервер не найден
+        if (!server)
+        {
+            ERR("There is no server with id %d", id);
+            return -ENODATA;
+        }
+
+        // поиск нужного соединения
+        scon = server_find_conn_by_sub_mem_id(server, sub_mem_id);
+
+        // если не нашлось такого серверного соединения
+        if (!scon)
+        {
+            ERR("There is no server connection unit for connection btw server (ID:%d) and sub_mem (ID:%d)",
+                server_id, sub_mem_id);
+            return -ENOENT;
+        }
+
+        conn = scon->conn;
+
+        // если нет соединения с этой памятью
+        if (!conn)
+        {
+            ERR("There is no connection btw server (ID:%d) and sub_mem (ID:%d)", server_id, sub_mem_id);
+            return -ENOENT;
+        }
+
+        // получаем клиент
+        client = conn->m_client_p;
+
+        // Если нет указателя на клиент
+        if (!client)
+        {
+            ERR("Ivalid connection object: null client ptr (SERVER ID:%d) (SUB MEM ID: %d)", server_id, sub_mem_id);
+            return -ENOMEM;
+        }
+
+        if ((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)))
+        {
+            ERR("sending notif failed");
+        }
+
+        // удаляем соединени
+        server_cleanup_connection(server, scon);
         break;
 
     default:

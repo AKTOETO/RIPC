@@ -85,13 +85,6 @@ void client_destroy(struct client_t *cli)
 
     INF("Destroying client (ID:%d))\n", cli->m_id);
 
-    // удаление соединения, если оно есть
-    // if (cli->m_conn_p)
-    // {
-    //     cli->m_conn_p->m_client_p = NULL;
-    //     delete_connection(cli->m_conn_p);
-    // }
-
     // удаление из глобального списка
     mutex_lock(&g_clients_lock);
     list_del(&cli->list);
