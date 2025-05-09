@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <algorithm> // std::find_if
+#include <tuple>
 
 namespace ripc
 {
@@ -396,13 +397,48 @@ namespace ripc
         return oss.str();
     }
 
-    bool Server::registerCallback(const UrlPattern &url, UrlCallback &&callback)
+    // bool Server::registerCallback(const UrlPattern& url_pattern, UrlCallback &&callback)
+    // {
+    //     auto [it, inserted] = m_urls.try_emplace(url_pattern, std::move(callback));
+    //     if (inserted)
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' registered\n";
+    //     else
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' NOT registered\n";
+    //     return inserted;
+    // }
+
+    // bool Server::registerCallback(const std::string &url_pattern, UrlCallback &&callback)
+    // {
+    //     auto [it, inserted] = m_urls.try_emplace(
+
+    //         url_pattern,
+    //         std::forward_as_tuple(std::forward<UrlCallback>(callback))  // Перемещаем callback
+    //     );
+    //     if (inserted)
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' registered\n";
+    //     else
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' NOT registered\n";
+    //     return inserted;
+    // }
+
+    // bool Server::registerCallback(const char *url_pattern, UrlCallback &&callback)
+    // {
+    //     auto [it, inserted] = m_urls.try_emplace(UrlPattern(url_pattern), std::move(callback));
+    //     if (inserted)
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' registered\n";
+    //     else
+    //         std::cout << "Server::registerCallback: callback to '" << url_pattern << "' NOT registered\n";
+    //     return inserted;
+    // }
+
+    bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallback &&callback)
     {
-        auto [it, inserted] = m_urls.try_emplace(url.getUrl(), std::move(callback));
+        auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(callback));
+
         if (inserted)
-            std::cout << "Server::registerCallback: callback to '" << url << "' registered\n";
+            std::cout << "Server::registerCallback: callback to '" << url_pattern << "' registered\n";
         else
-            std::cout << "Server::registerCallback: callback to '" << url << "' NOT registered\n";
+            std::cout << "Server::registerCallback: callback to '" << url_pattern << "' NOT registered\n";
         return inserted;
     }
 
@@ -456,15 +492,15 @@ namespace ripc
 
         // читаем в буфер url
         size_t url_size = 100;
-        char url_str[100];
+        char url_str[100] = {};
         size_t read_pos = 0;
 
         // копируем url
-        if ((read_pos = mem.second->readUntil(0, url_str, url_size - 1, 4)) == 0)
+        if ((read_pos = mem.second->readUntil(0, url_str, url_size - 1, '\0')) == 0)
         {
             throw std::runtime_error("Server::dispatchNewMessage: there is not URL in the message");
         }
-        url_str[url_size - 1] = '\0';
+        url_str[read_pos - 1] = '\0';
 
         // создаем url
         Url url(url_str);

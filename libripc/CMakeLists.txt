@@ -5,7 +5,7 @@ file(GLOB LIB_SOURCES src/*.cpp)
 
 # Находим все заголовочные файлы (.h) в каталоге include/ripc/
 # Это нужно для IDE и правильных зависимостей при изменениях
-file(GLOB LIB_HEADERS include/ripc/*.h)
+file(GLOB LIB_HEADERS include/ripc/*.hpp)
 
 # Создаем статическую библиотеку с именем 'ripc'
 # STATIC - библиотека будет вкомпилирована в конечный исполняемый файл

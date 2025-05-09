@@ -57,8 +57,9 @@ namespace ripc
         // список общих памятей
         std::unordered_map<int, std::shared_ptr<Memory>> m_mappings; // std::vector<ServerShmMapping> mappings;
 
-        // список колбеков на url определенные
         // using Buffer = std::string;
+        
+        // список колбеков на url определенные
         std::map<UrlPattern, UrlCallback> m_urls;
 
         // Приватный конструктор
@@ -104,7 +105,12 @@ namespace ripc
         const std::string &getName() const;
         bool isInitialized() const;
         std::string getInfo() const;
-        bool registerCallback(const UrlPattern &url, UrlCallback &&callback);
+
+        // регистрация обработчика запросов на шаблонный url
+        //bool registerCallback(const std::string &url_pattern, UrlCallback &&callback);
+        //bool registerCallback(const char* url_pattern, UrlCallback &&callback);
+        bool registerCallback(UrlPattern&& url_pattern, UrlCallback &&callback);
+        //bool registerCallback(const UrlPattern& url_pattern, UrlCallback &&callback);
     };
 
 } // namespace ripc

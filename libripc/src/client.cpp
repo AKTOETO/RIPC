@@ -130,10 +130,10 @@ namespace ripc
         auto write_bytes = m_sub_mem.write(0, url.getUrl());
 
         // копируем разделитель
-        write_bytes += m_sub_mem.add(write_bytes + 1, 4);
+        write_bytes += m_sub_mem.add(write_bytes, '\0');
 
         // копируем буфер
-        write_bytes += m_sub_mem.write(write_bytes + 1, buffer.data(), buffer.size());
+        write_bytes += m_sub_mem.write(write_bytes, buffer.data(), buffer.size());
 
         // уведомляем драйвер
         u32 packed_id = pack_ids(m_client_id, 0);

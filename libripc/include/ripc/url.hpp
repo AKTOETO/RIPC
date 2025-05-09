@@ -9,25 +9,49 @@
 namespace ripc
 {
 
-    template <typename DynTok>
+    class Url;
+    class UrlPattern;
+
+    namespace TokenType
+    {
+        // типы для обычного url
+        namespace Url
+        {
+            using Type = std::variant<std::string, int>;
+        };
+
+        // типы для шаблонного url
+        namespace UrlPattern
+        {
+            using Static = std::variant<std::string, int>;
+
+            enum class Dynamic
+            {
+                STRING,
+                INT
+            };
+
+            using Type = std::variant<Static, Dynamic>;
+        };
+    }
+
+    template <typename TokenType>
     class IUrl
     {
     protected:
-        // список возможных токенов в url
-        using Token = std::variant<std::string, DynTok>;
-
         // список токенов из url
-        std::vector<Token> m_pattern;
+        std::vector<TokenType> m_pattern;
         // url в виде строки
         std::string m_url;
 
         // разбиение паттерна на части
-        void subdivide(const std::string &str);
-        virtual DynTok processDynTok(const std::string &tok) = 0;
+        void subdivide();
+        virtual TokenType processToken(const std::string &tok) = 0;
 
     public:
-        IUrl(const std::string &pattern) : m_url(pattern) { subdivide(m_url); }
-        IUrl(const char *pattern) : m_url(pattern) { subdivide(m_url); }
+        IUrl(const std::string &pattern) : m_url(pattern) {}
+        IUrl(const char *pattern) : m_url(pattern) {}
+        virtual ~IUrl() {};
 
         // запрет копирования
         IUrl(const IUrl &) = delete;
@@ -38,15 +62,14 @@ namespace ripc
         IUrl &operator=(IUrl &&other) noexcept = default;
 
         // получить список токенов
-        const std::vector<Token> &getTokens() const { return m_pattern; }
+        const std::vector<TokenType> &getTokens() const { return m_pattern; }
 
         // получить URL строкой
         const std::string &getUrl() const { return m_url; }
 
         // сравнение двух паттернов
-        bool operator<(const IUrl &pat) { return m_pattern < pat.m_pattern; }
+        friend bool operator<(const IUrl &pat, const IUrl &pat2) { return pat.m_pattern < pat2.m_pattern; }
 
-        
         // вывод в поток
         friend std::ostream &operator<<(std::ostream &out, const IUrl &url)
         {
@@ -54,106 +77,67 @@ namespace ripc
             return out;
         }
     };
-    
-    // токенизированный url
-    namespace DynTok
-    {
-        using Url = std::variant<std::string, int>;
-        enum class UrlPattern
-        {
-            NONE,
-            STRING,
-            INT
-        };
-    };
 
-    class UrlPattern;
-    class Url : public IUrl<DynTok::Url>
+    // Класс обычного Url
+    class Url : public IUrl<TokenType::Url::Type>
     {
     private:
-        virtual DynTok::Url processDynTok(const std::string &tok) override;
+        // обработка токена
+        virtual TokenType::Url::Type processToken(const std::string &tok) override;
 
     public:
         Url(const std::string &pattern);
         Url(const char *pattern);
+        ~Url() {};
 
+        // разрешаем перемещение
+        Url(Url &&other) noexcept = default;
+        Url &operator=(Url &&other) noexcept = default;
+
+        // операции сравнения
         friend bool operator==(const Url &url, const UrlPattern &pattern);
         friend bool operator==(const UrlPattern &pattern, const Url &url);
     };
 
-    // шаблон для проверки url
-    class UrlPattern : public IUrl<DynTok::UrlPattern>
+    // Класс шаблонного Url
+    class UrlPattern : public IUrl<TokenType::UrlPattern::Type>
     {
     private:
-        virtual DynTok::UrlPattern processDynTok(const std::string &tok) override;
+        // обработка токена
+        virtual TokenType::UrlPattern::Type processToken(const std::string &tok) override;
 
     public:
         UrlPattern(const std::string &pattern);
         UrlPattern(const char *pattern);
+        ~UrlPattern() {};
 
+        // разрешаем перемещение
+        UrlPattern(UrlPattern &&other) noexcept = default;
+        UrlPattern &operator=(UrlPattern &&other) noexcept = default;
+
+        // операции сравнения
         friend bool operator==(const Url &url, const UrlPattern &pattern);
         friend bool operator==(const UrlPattern &pattern, const Url &url);
-        friend bool operator<(const UrlPattern &p1, const UrlPattern &p2);
     };
 
     // --- IURL ---
     // Реализация шаблонного метода для итерфейсного класса
-    template <typename DynTok>
-    void IUrl<DynTok>::subdivide(const std::string &str)
+    template <typename TokenType>
+    void IUrl<TokenType>::subdivide()
     {
         // текущий токен
         std::string current;
-        // проверка на символы <>
-        bool in_brackets = false;
-        // ищем символ '/' и делим по нему строку на токены
-        for (char ch : str)
-        {
-            if (ch == '<')
-            {
-                if (in_brackets)
-                {
-                    // два открывающих <
-                    throw std::invalid_argument("UrlPattern::subdivide: two '<' in a row");
-                }
-                in_brackets = true;
 
+        // проходимся по строке и разбиваем ее на токены
+        for (char ch : m_url)
+        {
+            if (ch == '/')
+            {
                 if (!current.empty())
                 {
-                    m_pattern.emplace_back(current);
+                    // вызываем обработчик токена и добавляем его
+                    m_pattern.emplace_back(processToken(current));
                     current.clear();
-                }
-            }
-            else if (ch == '>')
-            {
-                if (!in_brackets)
-                {
-                    // не было открывающей скобки
-                    throw std::invalid_argument("UrlPattern::subdivide: there was no '<' before '>'");
-                }
-
-                // Пытаемся определить тип содержимого
-                if (current.empty())
-                {
-                    throw std::invalid_argument("UrlPattern::subdivide: Empty <>");
-                }
-
-                // обработка динамического токена
-                m_pattern.emplace_back(processDynTok(current));
-                current.clear();
-            }
-            else if (ch == '/')
-            {
-                if (in_brackets)
-                {
-                    current += ch;
-                }
-                else
-                {
-                    if (!current.empty())
-                    {
-                        m_pattern.emplace_back(current);
-                        current.clear();
-                    }
                 }
             }
             else
@@ -161,18 +145,13 @@ namespace ripc
                 current += ch;
             }
         }
-        // Обработка оставшихся данных
-        if (in_brackets)
-        {
-            throw std::invalid_argument("Unclosed <");
-        }
 
+        // если токен еще остался
         if (!current.empty())
         {
-            m_pattern.emplace_back(current);
+            m_pattern.emplace_back(processToken(current));
         }
     }
-
 } // namespace ripc
 
 #endif // !RIPC_URL_HPP

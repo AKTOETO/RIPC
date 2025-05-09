@@ -7,7 +7,7 @@ int main()
     // создадим клиент и сервер и подключимся клиентом к серверу
     auto *srv = ripc::createServer("server");
     srv->registerCallback(
-        "alo/alo",
+        "alo/alo/<int>",
         [](const notification_data &ntf, const ripc::Buffer &input, ripc::Buffer &out)
         {
             (void)ntf;
@@ -21,10 +21,10 @@ int main()
     cli->connect("server");
 
     ripc::Buffer buf;
-    auto cpid = buf.copy_from("kak dela???", 11);
+    buf.copy_from("kak dela???", 12);
 
     cli->call(
-        "alo/alo1", std::move(buf),
+        "alo/alo/12", std::move(buf),
         [](ripc::Buffer buffer)
         {
             std::cout << buffer << std::endl;

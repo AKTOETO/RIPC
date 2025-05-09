@@ -1,5 +1,5 @@
 # CMake-файл для тестового приложения test_app
-set(NAME simple_test)
+set(NAME test_app2)
 
 # Определяем исполняемый файл и его исходник
 add_executable(${NAME} app.cpp)
