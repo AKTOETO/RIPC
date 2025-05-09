@@ -194,132 +194,23 @@ namespace ripc
 
     void Client::disconnect()
     {
-        // TODO:
-        //  нужен IOCTL_CLIENT_DISCONNECT для того, чтобы отключиться клиентом от сервера
+        auto packed_id = pack_ids(m_client_id, 0);
+
+        if (packed_id == -1)
+        {
+            throw std::runtime_error("Client::disconnect: cant pack id");
+        }
+
+        if (ioctl(m_context.getFd(), IOCTL_CLIENT_DISCONNECT, packed_id) < 0)
+        {
+            throw std::runtime_error("Client::disconnect: id " + std::to_string(m_client_id) +
+                                     ": failed IOCTL_CLIENT_DISCONNECT");
+        }
+
+        // очистка полей
+        m_connected_server_name.clear();
+        m_sub_mem.unmap();
     }
-    // void Client::mmap()
-    // {
-    //     checkInitialized();
-    //     if (shm_mapped)
-    //     {
-    //         std::cout << "Client " << m_client_id << ": Memory already mapped." << std::endl;
-    //         return;
-    //     }
-
-    //     u32 packed_id = pack_ids(m_client_id, 0); // shm_id для клиента = 0
-    //     if (packed_id == (u32)-EINVAL)
-    //     {
-    //         throw std::logic_error("Client " + std::to_string(m_client_id) + ": Failed to pack ID for mmap.");
-    //     }
-
-    //     off_t offset = (off_t)packed_id * m_context.getPageSize();
-    //     std::cout << "Client " << m_client_id << ": Attempting mmap with offset 0x"
-    //               << std::hex << offset << " (packed 0x" << packed_id << ")" << std::dec << std::endl;
-
-    //     void *addr = ::mmap(NULL, SHM_REGION_PAGE_SIZE, PROT_READ | PROT_WRITE,
-    //                         MAP_SHARED, m_context.getFd(), offset);
-
-    //     if (addr == MAP_FAILED)
-    //     {
-    //         int err_code = errno;
-    //         throw std::runtime_error("Client " + std::to_string(m_client_id) + ": mmap failed: " + strerror(err_code));
-    //     }
-
-    //     shm_addr = addr;
-    //     shm_size = SHM_REGION_PAGE_SIZE;
-    //     shm_mapped = true;
-    //     std::cout << "Client " << m_client_id << ": Memory mapped at " << shm_addr << std::endl;
-    // }
-
-    // size_t Client::write(size_t offset, const void *data, size_t size)
-    // {
-    //     checkMapped();
-    //     if (!data && size > 0)
-    //         throw std::invalid_argument("Invalid data pointer for write.");
-
-    //     if (offset >= shm_size)
-    //     {
-    //         throw std::out_of_range("Client " + std::to_string(m_client_id) + ": Write offset " + std::to_string(offset) + " out of bounds (" + std::to_string(shm_size) + ")");
-    //     }
-
-    //     size_t available = shm_size - offset;
-    //     size_t write_len = std::min(size, available);
-
-    //     memcpy(static_cast<char *>(shm_addr) + offset, data, write_len);
-
-    //     // std::cout << "Client " << client_id << " wrote " << write_len << " bytes at offset " << offset << "." << std::endl;
-
-    //     // Уведомляем драйвер, только если подключены
-    //     if (isConnected())
-    //     {
-    //         u32 packed_id = pack_ids(m_client_id, 0);
-    //         if (packed_id != (u32)-EINVAL)
-    //         {
-    //             if (ioctl(m_context.getFd(), IOCTL_CLIENT_END_WRITING, packed_id) < 0)
-    //             {
-    //                 // Логируем, но не бросаем исключение - запись прошла успешно
-    //                 perror(("Client " + std::to_string(m_client_id) + ": Warning - IOCTL_CLIENT_END_WRITING failed").c_str());
-    //             }
-    //         }
-    //         else
-    //         {
-    //             std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
-    //         }
-    //     }
-
-    //     return write_len;
-    // }
-
-    // size_t Client::write(size_t offset, const std::string &text)
-    // {
-    //     // +1 для возможного null terminator
-    //     size_t bytes_to_write = text.length();
-    //     size_t bytes_written = write(offset, text.c_str(), bytes_to_write);
-
-    //     // Попытка записать null terminator, если все байты строки влезли и есть место
-    //     if (bytes_written == bytes_to_write && (offset + bytes_written + 1) <= shm_size)
-    //     {
-    //         char nt = '\0';
-    //         try
-    //         {
-    //             write(offset + bytes_written, &nt, 1); // Может вызвать второе уведомление
-    //         }
-    //         catch (...)
-    //         { /* Игнорируем ошибку записи терминатора */
-    //         }
-    //     }
-    //     return bytes_written; // Возвращаем кол-во байт строки
-    // }
-
-    // size_t Client::read(size_t offset, void *buffer, size_t size_to_read)
-    // {
-    //     checkMapped(); // Проверяет и инициализацию, и маппинг
-    //     if (!buffer && size_to_read > 0)
-    //         throw std::invalid_argument("Invalid buffer pointer for read.");
-
-    //     if (offset >= shm_size)
-    //     {
-    //         throw std::out_of_range("Client " + std::to_string(m_client_id) + ": Read offset " + std::to_string(offset) + " out of bounds (" + std::to_string(shm_size) + ")");
-    //     }
-
-    //     size_t available = shm_size - offset;
-    //     size_t read_len = std::min(size_to_read, available);
-
-    //     if (read_len > 0)
-    //     {
-    //         memcpy(buffer, static_cast<const char *>(shm_addr) + offset, read_len);
-    //     }
-    //     // Логирование чтения можно добавить по желанию
-    //     return read_len;
-    // }
-
-    // std::vector<char> Client::read(size_t offset, size_t size_to_read)
-    // {
-    //     std::vector<char> buffer(size_to_read);
-    //     size_t bytes_read = read(offset, buffer.data(), size_to_read);
-    //     buffer.resize(bytes_read); // Оставляем только прочитанные байты
-    //     return buffer;
-    // }
 
     std::string Client::getInfo() const
     {
@@ -351,13 +242,21 @@ namespace ripc
         switch (ntf.m_type)
         {
         case NEW_MESSAGE:
-            std::cout << "[Cleint " << m_client_id
+            std::cout << "[Client " << m_client_id
                       << " Handler]: Received NEW_MESSAGE notification from Server: "
-                      << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
+                      << ntf.m_sender_id << " using SubMem " << ntf.m_sub_mem_id
                       << std::endl;
             dispatchNewMessage(ntf);
-
             break;
+
+        case REMOTE_DISCONNECT:
+            std::cout << "[Client " << m_client_id
+                      << " Handler]: Received REMOTE_DISCONNECT from Server: "
+                      << ntf.m_sender_id << " using SubMem " << ntf.m_sub_mem_id
+                      << std::endl;
+            dispatchRemoteDisconnect(ntf);
+            break;
+
         default:
             std::cout << "  Action: Received unhandled notification type " << ntf.m_type << std::endl;
             break;
@@ -386,6 +285,18 @@ namespace ripc
             std::cout << "Client::dispatchNewMessage: There is no callback" << std::endl;
         }
         m_is_request_sent = 0;
+    }
+
+    void Client::dispatchRemoteDisconnect(const notification_data &ntf)
+    {
+        checkInitialized();
+        checkMapped();
+
+        std::cout << "Client::dispatchRemoteDisconnect: unmapping memory\n";
+
+        // очистка полей
+        m_connected_server_name.clear();
+        m_sub_mem.unmap();
     }
 
 } // namespace ripc

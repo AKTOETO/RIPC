@@ -436,9 +436,9 @@ namespace ripc
         auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(callback));
 
         if (inserted)
-            std::cout << "Server::registerCallback: callback to '" << url_pattern << "' registered\n";
+            std::cout << "Server::registerCallback: callback to '" << it->first << "' registered\n";
         else
-            std::cout << "Server::registerCallback: callback to '" << url_pattern << "' NOT registered\n";
+            std::cout << "Server::registerCallback: callback to '" << it->first << "' NOT registered\n";
         return inserted;
     }
 
@@ -472,6 +472,14 @@ namespace ripc
                       << std::endl;
             // вызваем обработчик нового сообщения
             dispatchNewMessage(ntf);
+            break;
+
+        case REMOTE_DISCONNECT:
+            std::cout << "[Server " << m_server_id
+                      << " Handler]: Received REMOTE_DISCONNECT notification from Client "
+                      << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
+                      << std::endl;
+            disconnectFromClient(findConnection(ntf.m_sender_id));
             break;
         default:
             std::cout << "Server " << m_server_id << ": Received unhandled notification type " << ntf.m_type << std::endl;
@@ -533,6 +541,31 @@ namespace ripc
 
         if (!found_callback)
             std::cerr << "[Server::dispatchNewMessage] There is no callback for url: " << url_str << std::endl;
+    }
+
+    // отключение клиента от сервера
+    void Server::disconnectFromClient(std::shared_ptr<ConnectionInfo> con)
+    {
+        std::cout<<"Server::disconnectFromClient: disconnecting client\n";
+        checkInitialized();
+
+        if (!con)
+        {
+            throw std::runtime_error("Server::disconnectFromClient: Unable to disconnect NULL connection");
+        }
+
+        // удалить ячейку памяти
+        m_mappings.erase(con->m_sub_mem_p.first);
+
+        // удалить соединениеs
+        auto it = std::find_if(
+            m_connections.begin(), m_connections.end(),
+            [&con](const auto &el)
+            {
+                return el->client_id == con->client_id;
+            });
+
+        m_connections.erase(it);
     }
 
     // --- Реализация приватных хелперов ---

@@ -117,6 +117,18 @@ void delete_connection(struct connection_t *conn)
         conn->m_server_p ? conn->m_server_p->m_id : -1,
         conn->m_mem_p ? conn->m_mem_p->m_id : -1);
 
+    // отправляем уведомление клиенту
+    if ((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)) != 0)
+    {
+        ERR("Bad notification sending to server. code: %d", ret);
+    }
+
+    // отправляем уведомление Серверу
+    if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)) != 0)
+    {
+        ERR("Bad notification sending to client. code: %d", ret);
+    }
+
     // Отсоединяем sub_mem
     safe_disconnect_submem(conn);
 
@@ -132,12 +144,6 @@ void delete_connection(struct connection_t *conn)
         {
             conn->m_client_p->m_conn_p = NULL;
             INF("Cleared connection pointer in client %d", conn->m_client_p->m_id);
-
-            // отправляем уведомление клиенту 
-            if((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)) != 0)
-            {
-                ERR("Bad notification sending. code: %d", ret);
-            }
         }
         else
         {
@@ -158,12 +164,6 @@ void delete_connection(struct connection_t *conn)
         mutex_lock(&conn->m_server_p->m_con_list_lock);
         if (srv_conn_entry)
         {
-            // отправляем уведомление Серверу 
-            if((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)) != 0)
-            {
-                ERR("Bad notification sending. code: %d", ret);
-            }
-
             list_del(&srv_conn_entry->list); // Удаляем из списка сервера
             kfree(srv_conn_entry);           // Освобождаем элемент списка
             INF("Connection removed from server %d list.", conn->m_server_p->m_id);

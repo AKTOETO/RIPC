@@ -79,10 +79,25 @@ int notification_send(enum notif_sender sender,
                       enum notif_type type,
                       struct connection_t *con)
 {
-    if (!IS_NTF_SEND_VALID(sender) || !IS_NTF_TYPE_VALID(type) ||
-        !con || !con->m_mem_p || !con->m_client_p || !con->m_server_p)
+    if (!IS_NTF_SEND_VALID(sender)) //|| !con->m_client_p || !con->m_server_p
     {
-        ERR("Param error");
+        ERR("Invalid sender");
+        return -ENOPARAM;
+    }
+
+    if (!IS_NTF_TYPE_VALID(type))
+    {
+        ERR("Invalid type");
+        return -ENOPARAM;
+    }
+    if (!con)
+    {
+        ERR("NULL connection");
+        return -ENOPARAM;
+    }
+    if (!con->m_mem_p)
+    {
+        ERR("NULL con->mem");
         return -ENOPARAM;
     }
 
@@ -94,15 +109,25 @@ int notification_send(enum notif_sender sender,
     switch (sender)
     {
     case CLIENT:
-        sender_id = con->m_client_p->m_id;
-        reciever_id = con->m_server_p->m_id;
-        reciever_task = con->m_server_p->m_task_p->m_reg_task;
+        if (!con->m_client_p)
+        {
+            ERR("No client ptr in connection");
+            return -ENOENT;
+        }
+        sender_id = (!con->m_client_p ? -1 : con->m_client_p->m_id);
+        reciever_id = (!con->m_server_p ? -1 : con->m_server_p->m_id);
+        reciever_task = (!con->m_server_p ? NULL : con->m_server_p->m_task_p->m_reg_task);
         break;
 
     case SERVER:
-        sender_id = con->m_server_p->m_id;
-        reciever_id = con->m_client_p->m_id;
-        reciever_task = con->m_client_p->m_task_p->m_reg_task;
+        if (!con->m_server_p)
+        {
+            ERR("No client ptr in connection");
+            return -ENOENT;
+        }
+        sender_id = (!con->m_server_p ? -1 : con->m_server_p->m_id);
+        reciever_id = (!con->m_client_p ? -1 : con->m_client_p->m_id);
+        reciever_task = (!con->m_client_p ? NULL : con->m_client_p->m_task_p->m_reg_task);
         break;
     default:
         ERR("Undefined sender type %d", sender);
@@ -143,6 +168,7 @@ int notification_send(enum notif_sender sender,
     else
     {
         ERR("notification hasnt been added");
+        notification_delete(ntf);
         return -EFAULT;
     }
 

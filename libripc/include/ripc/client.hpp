@@ -53,14 +53,15 @@ namespace ripc
         Client &operator=(const Client &) = delete;
 
         // чтение или запись
-        //size_t write(size_t offset, const void *data, size_t size);
-        //size_t write(size_t offset, const std::string &text);
-        //size_t read(size_t offset, void *buffer, size_t size_to_read);
-        //std::vector<char> read(size_t offset, size_t size_to_read);
+        // size_t write(size_t offset, const void *data, size_t size);
+        // size_t write(size_t offset, const std::string &text);
+        // size_t read(size_t offset, void *buffer, size_t size_to_read);
+        // std::vector<char> read(size_t offset, size_t size_to_read);
 
         // --- Обработка уведомлений ---
         void handleNotification(const notification_data &ntf);
         void dispatchNewMessage(const notification_data &ntf);
+        void dispatchRemoteDisconnect(const notification_data &ntf);
 
     public:
         ~Client();

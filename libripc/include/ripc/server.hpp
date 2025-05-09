@@ -49,7 +49,10 @@ namespace ripc
             int client_id = -1;
             const std::pair<const int, std::shared_ptr<Memory>> &m_sub_mem_p;
             bool active = false;
-            ConnectionInfo(int client_id, const std::pair<const int, std::shared_ptr<Memory>> &sub_mem) : client_id(client_id), m_sub_mem_p(sub_mem), active(true) {}
+            ConnectionInfo(int client_id, const std::pair<const int, std::shared_ptr<Memory>> &sub_mem)
+                : client_id(client_id), m_sub_mem_p(sub_mem), active(true)
+            {
+            }
         };
 
         // список соединений
@@ -58,7 +61,7 @@ namespace ripc
         std::unordered_map<int, std::shared_ptr<Memory>> m_mappings; // std::vector<ServerShmMapping> mappings;
 
         // using Buffer = std::string;
-        
+
         // список колбеков на url определенные
         std::map<UrlPattern, UrlCallback> m_urls;
 
@@ -93,12 +96,12 @@ namespace ripc
         void handleNotification(const notification_data &ntf);
         void dispatchNewMessage(const notification_data &ntf);
 
+        // отключение клиента
+        void disconnectFromClient(std::shared_ptr<ConnectionInfo> con);
+
     public:
-        // Деструктор (выполняет cleanup_mappings)
         ~Server();
 
-        // --- Основные операции ---
-        // void mmapSubmemory(int shm_id);
 
         // --- Получение информации ---
         int getId() const;
@@ -107,10 +110,10 @@ namespace ripc
         std::string getInfo() const;
 
         // регистрация обработчика запросов на шаблонный url
-        //bool registerCallback(const std::string &url_pattern, UrlCallback &&callback);
-        //bool registerCallback(const char* url_pattern, UrlCallback &&callback);
-        bool registerCallback(UrlPattern&& url_pattern, UrlCallback &&callback);
-        //bool registerCallback(const UrlPattern& url_pattern, UrlCallback &&callback);
+        // bool registerCallback(const std::string &url_pattern, UrlCallback &&callback);
+        // bool registerCallback(const char* url_pattern, UrlCallback &&callback);
+        bool registerCallback(UrlPattern &&url_pattern, UrlCallback &&callback);
+        // bool registerCallback(const UrlPattern& url_pattern, UrlCallback &&callback);
     };
 
 } // namespace ripc
