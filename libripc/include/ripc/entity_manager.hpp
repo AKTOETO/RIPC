@@ -1,4 +1,4 @@
-#ifndef RIPC_ENTITY_MANAGER_HPP 
+#ifndef RIPC_ENTITY_MANAGER_HPP
 #define RIPC_ENTITY_MANAGER_HPP
 
 #include "context.hpp" // Менеджер владеет контекстом
@@ -113,12 +113,28 @@ namespace ripc
         bool deleteServer(int server_id);
 
         /**
+         * @brief Удаляет сервер.
+         * Находит сервер в карте, вызывает его деструктор (через unique_ptr) и удаляет из карты.
+         * @param server Указатель на объект сервера.
+         * @return true, если сервер был найден и удален, иначе false.
+         */
+        bool deleteServer(Server* server);
+
+        /**
          * @brief Удаляет клиента по его ID ядра.
          * Находит клиента в карте, вызывает его деструктор (через unique_ptr) и удаляет из карты.
          * @param client_id ID клиента для удаления.
          * @return true, если клиент был найден и удален, иначе false.
          */
         bool deleteClient(int client_id);
+
+        /**
+         * @brief Удаляет клиента.
+         * Находит клиента в карте, вызывает его деструктор (через unique_ptr) и удаляет из карты.
+         * @param client Указатель на объект клиента.
+         * @return true, если клиент был найден и удален, иначе false.
+         */
+        bool deleteClient(Client *client);
 
         // --- Поиск сущностей ---
 

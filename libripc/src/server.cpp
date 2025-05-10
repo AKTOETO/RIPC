@@ -66,8 +66,13 @@ namespace ripc
         std::cout << "Server '" << m_name << "' (ID: " << m_server_id << ") destructing..." << std::endl;
         // cleanup_mappings();
 
-        // TODO:
-        //  Отмена регистрации в драйвере должна быть тут
+        // отменяем регистрацию сущности в драйвере
+        if (ioctl(m_context.getFd(), IOCTL_SERVER_UNREGISTER, pack_ids(m_server_id, 0)) < 0)
+        {
+            int err_code = errno;
+            std::cout << "Server init failed: IOCTL_SERVER_UNREGISTER for '" <<
+                                     m_name << "': " << strerror(err_code);
+        }
     }
 
     // Приватная очистка mmap
@@ -546,7 +551,7 @@ namespace ripc
     // отключение клиента от сервера
     void Server::disconnectFromClient(std::shared_ptr<ConnectionInfo> con)
     {
-        std::cout<<"Server::disconnectFromClient: disconnecting client\n";
+        std::cout << "Server::disconnectFromClient: disconnecting client\n";
         checkInitialized();
 
         if (!con)

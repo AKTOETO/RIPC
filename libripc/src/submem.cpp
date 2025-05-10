@@ -196,6 +196,10 @@ namespace ripc
         return false;
     }
 
+    /**
+     * --- BUFFER ---
+     */
+
     bool Buffer::setMaxSize(size_t size)
     {
         if (size <= SHM_REGION_PAGE_SIZE)
@@ -206,9 +210,6 @@ namespace ripc
         return false;
     }
 
-    /**
-     * --- BUFFER ---
-     */
     Buffer::Buffer(const Memory &mem, size_t offset)
         : m_current_size(0), m_max_size(SHM_REGION_PAGE_SIZE)
     {

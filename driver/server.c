@@ -133,7 +133,6 @@ void server_cleanup_connections(struct server_t *srv)
         mutex_unlock(&srv->m_con_list_lock);
         server_cleanup_connection(srv, srv_conn_entry);
         mutex_lock(&srv->m_con_list_lock);
-
     }
     mutex_unlock(&srv->m_con_list_lock); // Финальная разблокировка
     INF("Finished cleaning connections for server %d", srv->m_id);
@@ -195,7 +194,9 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     // Итерируемся по списку клиентов
     list_for_each_entry(server, &g_servers_list, list)
     {
-        if (/*server->m_task_p && server->m_task_p->m_reg_task->m_task_p->pid == pid &&*/ server->m_id == id)
+        if (server->m_task_p &&
+            server->m_task_p->m_reg_task->m_task_p->pid == pid &&
+            server->m_id == id)
         {
             INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
                 server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
@@ -206,6 +207,39 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     }
     mutex_unlock(&g_servers_lock);
     INF("Server not found with (ID:%d)(PID:%d)", id, pid);
+
+    return NULL;
+}
+
+struct server_t *find_server_by_id(int id)
+{
+    // проверка входных данных
+    if (!IS_ID_VALID(id))
+    {
+        ERR("Incorrect id: %d", id);
+        return NULL;
+    }
+    INF("Finding server with ID: %d", id);
+
+    mutex_lock(&g_servers_lock);
+
+    // проходимся по каждому клиенту и ищем подходящего
+    struct server_t *server = NULL;
+
+    // Итерируемся по списку клиентов
+    list_for_each_entry(server, &g_servers_list, list)
+    {
+        if (server->m_id == id)
+        {
+            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
+                server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
+            mutex_unlock(&g_servers_lock);
+            // Нашли совпадение - сохраняем результат
+            return server;
+        }
+    }
+    mutex_unlock(&g_servers_lock);
+    INF("Server not found with (ID:%d)", id);
 
     return NULL;
 }

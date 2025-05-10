@@ -14,8 +14,7 @@ int main()
             std::cout << "server> input[" << input << "]\n";
             out.copy_from(std::string("stroka"));
         });
-
-    std::cin.get();
+        std::cin.get();
 
     ripc::shutdown();
 }

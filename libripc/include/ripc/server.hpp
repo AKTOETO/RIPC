@@ -19,19 +19,6 @@ namespace ripc
     class RipcContext;       // Прямое объявление
     class RipcEntityManager; // Прямое объявление
 
-    // создаем буфер нужного размера
-    // class Buffer : private std::string
-    // {
-    // public:
-    //     Buffer() : std::string(SHM_REGION_PAGE_SIZE, '\0') {}
-    //     Buffer(const char *str) : std::string(str) {};
-    //     Buffer(const std::string &str) : std::string(str) {};
-    //     char &operator[](size_t i) { return std::string::operator[](i); }
-    //     size_t size() { return std::string::size(); }
-    //     size_t length() { return std::string::length(); }
-    //     char *data() { return std::string::data(); }
-    // };
-
     // Класс, представляющий экземпляр сервера RIPC
     class Server
     {

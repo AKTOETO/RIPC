@@ -31,11 +31,20 @@ namespace ripc
         return RipcEntityManager::getInstance().deleteServer(server_id);
     }
 
+    bool deleteServer(Server *server)
+    {
+        return RipcEntityManager::getInstance().deleteServer(server);
+    }
+
     bool deleteClient(int client_id)
     {
         return RipcEntityManager::getInstance().deleteClient(client_id);
     }
 
+    bool deleteClient(Client *client)
+    {
+        return RipcEntityManager::getInstance().deleteClient(client);
+    }
     Server *findServerById(int server_id)
     {
         return RipcEntityManager::getInstance().findServerById(server_id);
@@ -53,12 +62,12 @@ namespace ripc
 
     void setGlobalServerLimit(size_t limit)
     {
-        //RipcEntityManager::setGlobalServerLimit(limit);
+        // RipcEntityManager::setGlobalServerLimit(limit);
     }
 
     void setGlobalClientLimit(size_t limit)
     {
-        //RipcEntityManager::setGlobalClientLimit(limit);
+        // RipcEntityManager::setGlobalClientLimit(limit);
     }
 
 } // namespace ripc

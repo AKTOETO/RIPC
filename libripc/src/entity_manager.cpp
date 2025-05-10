@@ -127,9 +127,9 @@ namespace ripc
     Server *RipcEntityManager::createServer(const std::string &name)
     {
         if (!is_initialized)
-        throw std::logic_error("Manager not initialized.");
+            throw std::logic_error("Manager not initialized.");
         if (servers.size() >= max_servers)
-        throw std::runtime_error("Server limit reached.");
+            throw std::runtime_error("Server limit reached.");
 
         auto new_server = std::unique_ptr<Server>(new Server(getContext(), name));
         try
@@ -154,7 +154,7 @@ namespace ripc
             // TODO: Возможно, добавить ioctl для отмены регистрации при ошибке здесь.
             throw std::logic_error("Server ID collision detected: " + std::to_string(new_id));
         }
-        
+
         Server *raw_ptr = new_server.get();
         // Вставляем в unordered_map, перемещая владение unique_ptr
         std::lock_guard<std::mutex> lock(manager_mutex);
@@ -166,11 +166,10 @@ namespace ripc
     Client *RipcEntityManager::createClient()
     {
         if (!is_initialized)
-        throw std::logic_error("Manager not initialized.");
+            throw std::logic_error("Manager not initialized.");
         if (clients.size() >= max_clients)
             throw std::runtime_error("Client limit reached.");
 
-        
         auto new_client = std::unique_ptr<Client>(new Client(getContext()));
         try
         {
@@ -191,7 +190,7 @@ namespace ripc
             // TODO: Отмена регистрации клиента при коллизии?
             throw std::logic_error("Client ID collision detected: " + std::to_string(new_id));
         }
-        
+
         Client *raw_ptr = new_client.get();
         std::lock_guard<std::mutex> lock(manager_mutex);
         clients.emplace(new_id, std::move(new_client));
@@ -213,18 +212,21 @@ namespace ripc
         if (removed_count > 0)
         {
             std::cout << "EntityManager: Server ID " << server_id << " deleted." << std::endl;
-            // TODO: Вызвать ioctl unregister здесь, если он будет реализован
-            // if (context && context->isInitialized()) {
-            //     ioctl(context->getFd(), IOCTL_UNREGISTER_SERVER, &server_id); // Игнорируем ошибку?
-            // }
             return true;
         }
         else
         {
-            // std::cerr << "EntityManager: Server ID " << server_id << " not found for deletion." << std::endl; // Можно не выводить
+            std::cerr << "EntityManager: Server ID " << server_id << " not found for deletion." << std::endl; // Можно не выводить
             return false;
         }
         // Деструктор unique_ptr вызывается автоматически при удалении элемента из карты
+    }
+
+    bool RipcEntityManager::deleteServer(Server *server)
+    {
+        if (!server)
+            return false;
+        return deleteServer(server->m_server_id);
     }
 
     bool RipcEntityManager::deleteClient(int client_id)
@@ -240,17 +242,20 @@ namespace ripc
         if (removed_count > 0)
         {
             std::cout << "EntityManager: Client ID " << client_id << " deleted." << std::endl;
-            // TODO: Вызвать ioctl unregister
-            // if (context && context->isInitialized()) {
-            //     ioctl(context->getFd(), IOCTL_UNREGISTER_CLIENT, &client_id);
-            // }
             return true;
         }
         else
         {
-            // std::cerr << "EntityManager: Client ID " << client_id << " not found for deletion." << std::endl;
+            std::cerr << "EntityManager: Client ID " << client_id << " not found for deletion." << std::endl;
             return false;
         }
+    }
+
+    bool RipcEntityManager::deleteClient(Client *client)
+    {
+        if (!client)
+            return false;
+        return deleteClient(client->m_client_id);
     }
 
     // Поиск O(1) в среднем для unordered_map
@@ -332,14 +337,14 @@ namespace ripc
             {
                 if (ntf.m_who_sends == CLIENT)
                 { // К серверу
-                    std::cout<<"RipcEntityManager::dispatchNotification: send notification to server\n";
+                    std::cout << "RipcEntityManager::dispatchNotification: send notification to server\n";
                     auto it_srv = servers.find(receiver_id);
                     if (it_srv != servers.end())
-                    target_server = it_srv->second.get();
+                        target_server = it_srv->second.get();
                 }
                 else if (ntf.m_who_sends == SERVER)
                 { // К клиенту
-                    std::cout<<"RipcEntityManager::dispatchNotification: send notification to client\n";
+                    std::cout << "RipcEntityManager::dispatchNotification: send notification to client\n";
                     auto it_cli = clients.find(receiver_id);
                     if (it_cli != clients.end())
                         target_client = it_cli->second.get();
@@ -484,7 +489,7 @@ namespace ripc
     // void RipcEntityManager::setGlobalServerLimit(size_t limit)
     // {
     //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-    //     if(getInstance().is_initialized) 
+    //     if(getInstance().is_initialized)
     //     {
     //         std::cerr << "Ripc library should not be initialized for changing server limit\n";
     //         return;
@@ -496,7 +501,7 @@ namespace ripc
     // void RipcEntityManager::setGlobalClientLimit(size_t limit)
     // {
     //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-    //     if(getInstance().is_initialized) 
+    //     if(getInstance().is_initialized)
     //     {
     //         std::cerr << "Ripc library should not be initialized for changing client limit\n";
     //         return;

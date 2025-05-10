@@ -362,26 +362,28 @@ void reg_task_delete(struct reg_task_t *reg_task)
     // Удалить сами структуры серверов
     list_for_each_entry_safe(srv_entry, srv_tmp, &reg_task->m_servers, list)
     {
-        // Удаляем из списка reg_task
-        list_del(&srv_entry->list);
-        if (srv_entry->m_server)
-        {
-            // Удаляем сервер (из глоб. списка и kfree)
-            server_destroy(srv_entry->m_server);
-        }
-        // Освобождаем элемент списка reg_task
-        kfree(srv_entry);
+        reg_task_delete_server(srv_entry);
+        // // Удаляем из списка reg_task
+        // list_del(&srv_entry->list);
+        // if (srv_entry->m_server)
+        // {
+        //     // Удаляем сервер (из глоб. списка и kfree)
+        //     server_destroy(srv_entry->m_server);
+        // }
+        // // Освобождаем элемент списка reg_task
+        // kfree(srv_entry);
     }
 
     // Удалить сами структуры клиентов
     list_for_each_entry_safe(cli_entry, cli_tmp, &reg_task->m_clients, list)
     {
-        list_del(&cli_entry->list);
-        if (cli_entry->m_client)
-        {
-            client_destroy(cli_entry->m_client);
-        }
-        kfree(cli_entry);
+        reg_task_delete_client(cli_entry);
+        // list_del(&cli_entry->list);
+        // if (cli_entry->m_client)
+        //{
+        //     client_destroy(cli_entry->m_client);
+        // }
+        // kfree(cli_entry);
     }
 
     // удаляем список уведомлений
@@ -508,6 +510,41 @@ int reg_task_add_notification(
 
     reg_task_notify_all(reg_task);
     return 0;
+}
+
+void reg_task_delete_client(struct clients_list_t *cli_entry)
+{
+    if (!cli_entry)
+    {
+        ERR("No param");
+        return;
+    }
+
+    list_del(&cli_entry->list);
+    if (cli_entry->m_client)
+    {
+        client_destroy(cli_entry->m_client);
+    }
+    kfree(cli_entry);
+}
+
+void reg_task_delete_server(struct servers_list_t *srv_entry)
+{
+    if (!srv_entry)
+    {
+        ERR("No param");
+        return;
+    }
+
+    // Удаляем из списка reg_task
+    list_del(&srv_entry->list);
+    if (srv_entry->m_server)
+    {
+        // Удаляем сервер (из глоб. списка и kfree)
+        server_destroy(srv_entry->m_server);
+    }
+    // Освобождаем элемент списка reg_task
+    kfree(srv_entry);
 }
 
 struct notification_t *reg_task_get_notification(struct reg_task_t *reg_task)

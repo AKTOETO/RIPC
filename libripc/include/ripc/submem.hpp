@@ -26,6 +26,10 @@ namespace ripc
         Memory() = delete;
         ~Memory();
 
+        // Запрет копирования
+        Memory(const Memory &) = delete;
+        Memory &operator=(const Memory &) = delete;
+
         RipcContext &m_context;
         char *m_addr;
         size_t m_max_size;
@@ -56,7 +60,6 @@ namespace ripc
         std::array<char, SHM_REGION_PAGE_SIZE> m_data;
         size_t m_current_size;
         size_t m_max_size;
-
 
         /// @brief Установка максимального размера
         /// @param size запрашиваемый размер

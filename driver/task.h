@@ -113,7 +113,7 @@ struct reg_task_t
  */
 
 // получение размера очереди уведомлений
-int reg_task_get_notif_count(struct reg_task_t* reg_task);
+int reg_task_get_notif_count(struct reg_task_t *reg_task);
 
 // Создание зарегистрированного процесса
 struct reg_task_t *
@@ -134,6 +134,12 @@ void reg_task_add_client(struct reg_task_t *reg_task, struct client_t *cli);
 // добавление уведомления
 int reg_task_add_notification(
     struct reg_task_t *reg_task, struct notification_t *notif);
+
+// удаление клиента
+void reg_task_delete_client(struct clients_list_t *cli);
+
+// удаление сервера
+void reg_task_delete_server(struct servers_list_t *srv);
 
 // получение уведомления
 struct notification_t *reg_task_get_notification(struct reg_task_t *reg_task);

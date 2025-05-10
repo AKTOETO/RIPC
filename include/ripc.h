@@ -88,7 +88,9 @@ struct connect_to_server
 #define IOCTL_SERVER_END_WRITING _IOW(IOCTL_MAGIC, 5, unsigned int)             // оповещение драйвера об окончании записи из сервера
 #define IOCTL_CLIENT_DISCONNECT _IOW(IOCTL_MAGIC, 6, unsigned int)  // Запрос от клиента на отключение от сервера (client_id, 0)
 #define IOCTL_SERVER_DISCONNECT _IOW(IOCTL_MAGIC, 7, unsigned int)  // Запрос от сервера на отключение от клиента (server_id, client_id)
+#define IOCTL_CLIENT_UNREGISTER _IOW(IOCTL_MAGIC, 8, unsigned int)  // Запрос от клиента на полное отключение (client_id)
+#define IOCTL_SERVER_UNREGISTER _IOW(IOCTL_MAGIC, 9, unsigned int)  // Запрос от сервера на полное отключение (server_id)
 
-#define IOCTL_MAX_NUM 7 // максимальное количество команд
+#define IOCTL_MAX_NUM 9 // максимальное количество команд
 
 #endif // RIPC_H

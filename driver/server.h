@@ -56,6 +56,9 @@ struct server_t *find_server_by_name(const char *name);
 // поиск сервера по id и pid
 struct server_t *find_server_by_id_pid(int id, pid_t pid);
 
+// поиск сервера по id и pid
+struct server_t *find_server_by_id(int id);
+
 // поиск клиента из списка сервера по task_struct
 struct client_t *find_client_by_task_from_server(
     struct task_struct *task, struct server_t *serv);

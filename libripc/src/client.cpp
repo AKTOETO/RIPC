@@ -54,43 +54,16 @@ namespace ripc
     // Деструктор
     Client::~Client()
     {
-        // std::cout << "Client (ID: " << client_id << ") destructing..." << std::endl; // Отладка
-        // cleanup_shm();
+        std::cout << "Client (ID: " << m_client_id << ") destructing..." << std::endl;
 
-        // TODO:
-        // Отмена регистрации в ядре (unregister ioctl) должна происходить
-        // из RipcEntityManager::deleteClient, чтобы гарантировать,
-        // что контекст (и fd) еще жив на момент вызова ioctl.
+        // отменяем регистрацию сущности в драйвере
+        if (ioctl(m_context.getFd(), IOCTL_CLIENT_UNREGISTER, pack_ids(m_client_id, 0)) < 0)
+        {
+            int err_code = errno;
+            std::cout << "Client init failed: IOCTL_CLIENT_UNREGISTER for '"
+                      << m_client_id << "': " << strerror(err_code);
+        }
     }
-
-    // Приватная очистка mmap
-    // void Client::cleanup_shm()
-    // {
-    //     if (shm_mapped && shm_addr != MAP_FAILED)
-    //     {
-    //         int current_id = m_client_id; // Копируем ID для лога
-    //         void *current_addr = shm_addr;
-    //         size_t current_size = shm_size;
-
-    //         // Сбрасываем флаги ДО вызова munmap, чтобы избежать гонок или рекурсии
-    //         shm_mapped = false;
-    //         shm_addr = MAP_FAILED;
-    //         shm_size = 0;
-
-    //         if (munmap(current_addr, current_size) != 0)
-    //         {
-    //             perror(("Client " + std::to_string(current_id) + ": munmap failed").c_str());
-    //         }
-    //         else
-    //         {
-    //             std::cout << "Client " << current_id << ": Unmapped memory at " << current_addr << std::endl;
-    //         }
-    //     }
-    //     // Сбрасываем еще раз на всякий случай
-    //     shm_addr = MAP_FAILED;
-    //     shm_size = 0;
-    //     shm_mapped = false;
-    // }
 
     // Приватные проверки
     void Client::checkInitialized() const

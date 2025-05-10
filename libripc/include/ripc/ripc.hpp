@@ -1,13 +1,13 @@
 #ifndef RIPC_API_HPP
 #define RIPC_API_HPP
 
-//#include "ripc.h"
-//#include "id_pack.h"
+// #include "ripc.h"
+// #include "id_pack.h"
 #include "types.hpp" // Включаем общие типы (NotificationHandler, notif_type)
 #include "server.hpp"
 #include "client.hpp"
-#include <string>    // Для аргументов функций
-#include <cstddef>   // size_t
+#include <string>  // Для аргументов функций
+#include <cstddef> // size_t
 
 // --- Публичный интерфейс библиотеки RIPC ---
 
@@ -75,12 +75,27 @@ namespace ripc
     bool deleteServer(int server_id);
 
     /**
+     * @brief Удаляет экземпляр сервера.
+     * Вызывает деструктор объекта Server и освобождает связанные ресурсы.
+     * @param server Указатель на объект сервера.
+     * @return true, если сервер был найден и удален, иначе false.
+     */
+    bool deleteServer(Server* server);
+
+    /**
      * @brief Удаляет экземпляр клиента по его ID ядра.
      * Вызывает деструктор объекта Client и освобождает связанные ресурсы.
      * @param client_id ID клиента, полученный при создании.
      * @return true, если клиент был найден и удален, иначе false.
      */
     bool deleteClient(int client_id);
+    
+    /**
+     * @brief Удаляет экземпляр клиента.
+     * Вызывает деструктор объекта Client и освобождает связанные ресурсы.
+     * @param client Указатель на объект клиента, который надо удалить
+     */
+    bool deleteClient(Client *client);
 
     // --- Поиск сущностей ---
 
