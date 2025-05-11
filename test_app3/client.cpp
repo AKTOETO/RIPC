@@ -7,14 +7,22 @@ int main()
     auto *cli = ripc::createClient();
     cli->connect("hello");
 
-    ripc::Buffer buf;
-    buf.copy_from("kak dela???", 12);
-
     cli->call(
-        "alo/da", std::move(buf),
-        [](ripc::Buffer buffer)
+        "alo/da",
+        [](ripc::ReadBufferView &rb)
         {
-            std::cout << buffer << std::endl;
+            auto data = rb.getPayload();
+            if (!data)
+                std::cout << "CLIENT> Server's answer: '" << rb << "'\n";
+            else
+                std::cout << "CLIENT> Server's answer: '" << *data << "'\n";
+        },
+        [](ripc::WriteBufferView &rb)
+        {
+            rb.addHeader("header1");
+            rb.addHeader("123");
+            rb.addHeader("gydgashds");
+            rb.setPayload("Hello, im a client");
         });
 
     std::cin.get();

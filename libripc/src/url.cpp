@@ -7,6 +7,12 @@ namespace ripc
 {
     //--- URL ---
 
+    Url::Url(std::string_view pattern)
+        : IUrl<TokenType::Url::Type>(pattern)
+    {
+        subdivide();
+    }
+
     Url::Url(const std::string &url)
         : IUrl<TokenType::Url::Type>(url)
     {
@@ -33,6 +39,12 @@ namespace ripc
 
     // --- Pattern ---
 
+    UrlPattern::UrlPattern(std::string_view pattern)
+        : IUrl<TokenType::UrlPattern::Type>(pattern)
+    {
+        subdivide();
+    }
+    
     UrlPattern::UrlPattern(const std::string &pattern)
         : IUrl<TokenType::UrlPattern::Type>(pattern)
     {

@@ -19,20 +19,25 @@ namespace ripc
     class Client
     {
     private:
-        friend class RipcEntityManager; // Фабрика имеет доступ к конструктору и init
-        using CallCallback = std::function<void(Buffer buffer)>;
+        friend class RipcEntityManager;
+
+        // Обработчик запросов
+        using CallbackIn = std::function<void(ReadBufferView &)>;
+        using CallbackOut = std::function<void(WriteBufferView &)>;
+        struct CallbackFull
+        {
+            CallbackIn m_in;            
+            CallbackOut m_out;
+        };
 
         int m_client_id = -1;
         RipcContext &m_context;              // Ссылка на общий контекст
         bool m_initialized = false;          // Успешно ли прошел init (вызов ioctl)
         std::string m_connected_server_name; // имя сервера, к котрому подключен
-        CallCallback m_callback;             // Обработчик ответа от сервера
+        CallbackIn m_callback;             // Обработчик ответа от сервера
         bool m_is_request_sent;              // отправлен ли запрос
 
         // Информация о разделяемой памяти
-        // void *shm_addr = MAP_FAILED;
-        // size_t shm_size = 0;
-        // bool shm_mapped = false;
         Memory m_sub_mem;
 
         // Приватный конструктор (вызывается только RipcEntityManager)
@@ -79,14 +84,21 @@ namespace ripc
         /// @param url URL, на котоырй уходит запрос в сервер
         /// @param callback обработчик ответа сервера
         /// @return был ли отправлен запрос
-        bool call(const Url &url, CallCallback callback = nullptr);
+        //bool call(const Url &url, CallCallback callback = nullptr);
 
         /// @brief Отправка запроса на сервер
         /// @param url URL, на котоырй уходит запрос в сервер
         /// @param buffer Данные, отправляемые на сервер вместе с запросом
         /// @param callback обработчик ответа сервера
         /// @return был ли отправлен запрос
-        bool call(const Url &url, Buffer &&buffer, CallCallback callback = nullptr);
+        //bool call(const Url &url, BufferView &&buffer, CallCallback callback = nullptr);
+
+        /// @brief Отправка запроса на сервер
+        /// @param url URL запроса
+        /// @param in обработчик ответа от сервера
+        /// @param out обработчик отправляемых данных
+        /// @return отправлены данные (1) или нет (0)
+        bool call(const Url& url, CallbackIn &&in, CallbackOut &&out);
 
         // --- Получение информации ---
         // получение id

@@ -1,6 +1,7 @@
 #ifndef RIPC_URL_HPP
 #define RIPC_URL_HPP
 
+#include <string_view>
 #include <string>
 #include <vector>
 #include <variant>
@@ -49,6 +50,7 @@ namespace ripc
         virtual TokenType processToken(const std::string &tok) = 0;
 
     public:
+        IUrl(std::string_view pattern) : m_url(pattern) {}
         IUrl(const std::string &pattern) : m_url(pattern) {}
         IUrl(const char *pattern) : m_url(pattern) {}
         virtual ~IUrl() {};
@@ -86,6 +88,7 @@ namespace ripc
         virtual TokenType::Url::Type processToken(const std::string &tok) override;
 
     public:
+        Url(std::string_view pattern);
         Url(const std::string &pattern);
         Url(const char *pattern);
         ~Url() {};
@@ -107,6 +110,7 @@ namespace ripc
         virtual TokenType::UrlPattern::Type processToken(const std::string &tok) override;
 
     public:
+        UrlPattern(std::string_view pattern);
         UrlPattern(const std::string &pattern);
         UrlPattern(const char *pattern);
         ~UrlPattern() {};

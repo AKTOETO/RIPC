@@ -24,7 +24,15 @@ namespace ripc
     {
     private:
         friend class RipcEntityManager;
-        using UrlCallback = std::function<void(const notification_data &, const Buffer &, Buffer &)>;
+
+        // Обработчик запросов на определенный url
+        using UrlCallbackIn = std::function<void(const Url&, ReadBufferView &)>;
+        using UrlCallbackOut = std::function<void(WriteBufferView &)>;
+        struct UrlCallbackFull
+        {
+            UrlCallbackIn m_in;            
+            UrlCallbackOut m_out;
+        };
 
         int m_server_id = -1;
         std::string m_name;
@@ -50,7 +58,7 @@ namespace ripc
         // using Buffer = std::string;
 
         // список колбеков на url определенные
-        std::map<UrlPattern, UrlCallback> m_urls;
+        std::map<UrlPattern, UrlCallbackFull> m_urls;
 
         // Приватный конструктор
         Server(RipcContext &ctx, const std::string &server_name);
@@ -73,7 +81,7 @@ namespace ripc
         Server(const Server &) = delete;
         Server &operator=(const Server &) = delete;
 
-        size_t writeToClient(std::shared_ptr<ConnectionInfo> con, Buffer &&result);
+        void writeToClient(std::shared_ptr<ConnectionInfo> con, WriteBufferView &result);
         // size_t writeToClient(int client_id, size_t offset, const void *data, size_t size);
         // size_t writeToClient(int client_id, size_t offset, const std::string &text);
         // size_t readFromSubmemory(int shm_id, size_t offset, void *buffer, size_t size_to_read);
@@ -99,7 +107,8 @@ namespace ripc
         // регистрация обработчика запросов на шаблонный url
         // bool registerCallback(const std::string &url_pattern, UrlCallback &&callback);
         // bool registerCallback(const char* url_pattern, UrlCallback &&callback);
-        bool registerCallback(UrlPattern &&url_pattern, UrlCallback &&callback);
+        bool registerCallback(UrlPattern &&url_pattern, UrlCallbackFull &&callback);
+        bool registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut&& out);
         // bool registerCallback(const UrlPattern& url_pattern, UrlCallback &&callback);
     };
 

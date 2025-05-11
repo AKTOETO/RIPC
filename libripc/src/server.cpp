@@ -70,8 +70,8 @@ namespace ripc
         if (ioctl(m_context.getFd(), IOCTL_SERVER_UNREGISTER, pack_ids(m_server_id, 0)) < 0)
         {
             int err_code = errno;
-            std::cout << "Server init failed: IOCTL_SERVER_UNREGISTER for '" <<
-                                     m_name << "': " << strerror(err_code);
+            std::cout << "Server init failed: IOCTL_SERVER_UNREGISTER for '" 
+            << m_name << "': " << strerror(err_code);
         }
     }
 
@@ -168,7 +168,7 @@ namespace ripc
     //     std::cout << "Server " << server_id << ": Mapped shm_id " << shm_id << " at " << addr << std::endl;
     // }
 
-    size_t Server::writeToClient(std::shared_ptr<ConnectionInfo> con, Buffer &&result)
+    void Server::writeToClient(std::shared_ptr<ConnectionInfo> con, WriteBufferView &result)
     {
         std::cout << "Server::WriteToClient: sending answer to client" << std::endl;
         checkInitialized();
@@ -183,7 +183,7 @@ namespace ripc
             throw std::runtime_error("Server::writeToClient: mem is not mapped");
 
         // пишем в память данные
-        size_t write_len = mem.second->write(0, result.data(), result.size());
+        // size_t write_len = mem.second->write(0, result.data(), result.getCurrentSize());
 
         // отправляем уведомление
         u32 packed_id = pack_ids(m_server_id, mem.first);
@@ -200,8 +200,6 @@ namespace ripc
         {
             std::cerr << "Server " << m_server_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
         }
-
-        return write_len;
     }
 
     // size_t Server::writeToClient(int client_id, size_t offset, const void *data, size_t size)
@@ -436,9 +434,21 @@ namespace ripc
     //     return inserted;
     // }
 
-    bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallback &&callback)
+    bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallbackFull &&callback)
     {
         auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(callback));
+
+        if (inserted)
+            std::cout << "Server::registerCallback: callback to '" << it->first << "' registered\n";
+        else
+            std::cout << "Server::registerCallback: callback to '" << it->first << "' NOT registered\n";
+        return inserted;
+    }
+
+    bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut &&out)
+    {
+
+        auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(UrlCallbackFull{in, out}));
 
         if (inserted)
             std::cout << "Server::registerCallback: callback to '" << it->first << "' registered\n";
@@ -503,49 +513,80 @@ namespace ripc
                 "Server::dispatchNewMessage: doesnt have conection to client: " + std::to_string(ntf.m_sender_id));
         auto &mem = con->m_sub_mem_p;
 
-        // читаем в буфер url
-        size_t url_size = 100;
-        char url_str[100] = {};
-        size_t read_pos = 0;
+        // создаем ReadBuffer для чтения из памяти
+        ReadBufferView rb(*mem.second);
 
-        // копируем url
-        if ((read_pos = mem.second->readUntil(0, url_str, url_size - 1, '\0')) == 0)
+        // читаем URL
+        auto url_str = rb.getHeader();
+
+        // если url нет, тогда игнорируем это запрос
+        if (!url_str)
         {
-            throw std::runtime_error("Server::dispatchNewMessage: there is not URL in the message");
+            std::cerr << "Server::dispatchNewMessage: there is no URL in the memory\n";
+            return;
         }
-        url_str[read_pos - 1] = '\0';
 
-        // создаем url
-        Url url(url_str);
+        // создаем URl из строки
+        Url url(*url_str);
         std::cout << "Server::dispatchNewMessage: url: [" << url << "]\n";
 
-        // копируем оставшееся послание
-        // Buffer buf(mem.second->read(read_pos));
-        Buffer buf(*mem.second, read_pos);
-        std::cout << "Server::dispatchNewMessage: last part of buffer: [" << buf << "]\n";
+        // создаем выходной буфер
+        WriteBufferView wb(*mem.second);
 
-        //  Создаем выходной буфер
-        Buffer out;
+        // // читаем в буфер url
+        // size_t url_size = 100;
+        // char url_str[100] = {};
+        // size_t read_pos = 0;
+
+        // // копируем url
+        // if ((read_pos = mem.second->readUntil(0, url_str, url_size - 1, '\0')) == 0)
+        // {
+        //     throw std::runtime_error("Server::dispatchNewMessage: there is not URL in the message");
+        // }
+        // url_str[read_pos - 1] = '\0';
+
+        // // создаем url
+        // Url url(url_str);
+        // std::cout << "Server::dispatchNewMessage: url: [" << url << "]\n";
+
+        // // копируем оставшееся послание
+        // // Buffer buf(mem.second->read(read_pos));
+        // BufferView buf(*mem.second, read_pos);
+        // std::cout << "Server::dispatchNewMessage: last part of buffer: [" << buf << "]\n";
+
+        // //  Создаем выходной буфер
+        // BufferView out;
 
         // ищем подходящий обработчик для этого url
         bool found_callback = false;
-        for (auto &[pattern, callback] : m_urls)
+        for (auto &[pattern, callback_struct] : m_urls)
         {
             if (pattern == url)
             {
-                // вычисляем ответ
-                std::cout << "Server::dispatchNewMessage: calling the callback" << std::endl;
-                callback(ntf, buf, out);
+                // обрабатываем входящий запрос
+                if (callback_struct.m_in)
+                {
+                    std::cout << "Server::dispatchNewMessage: calling input callback" << std::endl;
+                    callback_struct.m_in(url, rb);
+                }
+
+                // генерируем ответные данные
+                if (callback_struct.m_out)
+                {
+                    std::cout << "Server::dispatchNewMessage: calling output callback" << std::endl;
+                    callback_struct.m_out(wb);
+                    wb.finalizePayload();
+                }
 
                 // отправляем ответ клиенту
-                writeToClient(con, std::move(out));
+                writeToClient(con, wb);
                 found_callback = 1;
                 break;
             }
         }
 
         if (!found_callback)
-            std::cerr << "[Server::dispatchNewMessage] There is no callback for url: " << url_str << std::endl;
+            std::cerr << "[Server::dispatchNewMessage] There is no callback for url: " << *url_str << std::endl;
     }
 
     // отключение клиента от сервера
