@@ -59,17 +59,13 @@ namespace ripc
         // запись
         size_t write(size_t offset, const char *buffer, size_t buffer_size);
         size_t write(size_t offset, std::string data);
-        // size_t write(const char *data, size_t len);
         bool add(size_t offset, char ch);
-        // bool add(char ch);
     };
 
     // Буфер для регулирования доступа к общей памяти
     class BufferView
     {
     protected:
-        //friend class Client;
-        //friend class Server;
 
         // Адрес памяти, которой управляет этот буфер
         Memory &m_mem;

@@ -59,15 +59,4 @@ namespace ripc
     {
         RipcEntityManager::getInstance().registerHandler(type, std::move(handler));
     }
-
-    void setGlobalServerLimit(size_t limit)
-    {
-        // RipcEntityManager::setGlobalServerLimit(limit);
-    }
-
-    void setGlobalClientLimit(size_t limit)
-    {
-        // RipcEntityManager::setGlobalClientLimit(limit);
-    }
-
 } // namespace ripc

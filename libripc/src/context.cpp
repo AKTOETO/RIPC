@@ -77,7 +77,6 @@ namespace ripc
     // Деструктор
     RipcContext::~RipcContext()
     {
-        // std::cout << "Context: Destructor called." << std::endl; // Отладка
         closeDevice();
     }
 

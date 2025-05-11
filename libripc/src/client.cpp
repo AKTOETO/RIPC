@@ -12,10 +12,6 @@
 #include <iomanip>
 #include <iostream>
 
-// #ifndef MAP_FAILED
-// #define MAP_FAILED ((void *)-1)
-// #endif
-
 namespace ripc
 {
 
@@ -23,7 +19,6 @@ namespace ripc
     Client::Client(RipcContext &ctx)
         : m_context(ctx), m_sub_mem(m_context),
           m_callback(nullptr), m_is_request_sent(0)
-    // m_mem_buf(m_sub_mem)
     {
         // ID будет установлен в init()
         std::cout << "Client: Basic construction." << std::endl;
@@ -100,13 +95,6 @@ namespace ripc
         // записываем url
         wb.addHeader(url.getUrl());
 
-        // копируем url
-        // auto write_bytes = m_sub_mem.write(0, url.getUrl());
-        //// копируем разделитель
-        // write_bytes += m_sub_mem.add(write_bytes, '\0');
-        //// копируем буфер
-        // write_bytes += m_sub_mem.write(write_bytes, buffer.data(), buffer.getCurrentSize());
-
         // вызываем генератор данных для буфера
         if (out)
         {
@@ -138,60 +126,6 @@ namespace ripc
 
         return false;
     }
-
-    // bool Client::call(const Url &url, CallCallback callback)
-    // {
-    //     return call(url, {}, callback);
-    // }
-
-    // bool Client::call(const Url &url, BufferView &&buffer, CallCallback callback)
-    // {
-    //     checkInitialized();
-    //     checkMapped();
-
-    //     std::cout << "Client::call: sending message [" << buffer << "] to: " << url << std::endl;
-
-    //     if (!isConnected())
-    //         throw std::runtime_error("Client::call: client is not connected to server");
-
-    //     if (m_is_request_sent)
-    //     {
-    //         std::cout << "Client::call: request has not been sent" << std::endl;
-    //         return 0;
-    //     }
-
-    //     // копируем url
-    //     auto write_bytes = m_sub_mem.write(0, url.getUrl());
-
-    //     // копируем разделитель
-    //     write_bytes += m_sub_mem.add(write_bytes, '\0');
-
-    //     // копируем буфер
-    //     write_bytes += m_sub_mem.write(write_bytes, buffer.data(), buffer.getCurrentSize());
-
-    //     // уведомляем драйвер
-    //     u32 packed_id = pack_ids(m_client_id, 0);
-    //     if (packed_id != (u32)-EINVAL)
-    //     {
-    //         if (ioctl(m_context.getFd(), IOCTL_CLIENT_END_WRITING, packed_id) < 0)
-    //         {
-    //             // Логируем, но не бросаем исключение - запись прошла успешно
-    //             perror(("Client " + std::to_string(m_client_id) + ": Warning - IOCTL_CLIENT_END_WRITING failed").c_str());
-    //         }
-    //     }
-    //     else
-    //     {
-    //         std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
-    //     }
-
-    //     // сохраняем обработчик ответа
-    //     m_callback = callback;
-
-    //     // отмечаем, что запрос отправлен
-    //     m_is_request_sent = 1;
-
-    //     return false;
-    // }
 
     // --- Публичные методы ---
     int Client::getId() const { return m_client_id; }
@@ -305,16 +239,12 @@ namespace ripc
         if (m_callback)
         {
             std::cout << "Client::dispatchNewMessage: Found callback" << std::endl;
+            
             // Создаем буфер для чтения из памяти
             ReadBufferView rb(m_sub_mem);
 
             // вызываем обработчик ответа сервера
             m_callback(rb);
-
-            //// создаем буфер от памяти
-            // BufferView buf(m_sub_mem, 0);
-            //// запускаем обработчик
-            // m_callback(std::move(buf));
 
             // обнуляем обработчик
             m_callback = nullptr;

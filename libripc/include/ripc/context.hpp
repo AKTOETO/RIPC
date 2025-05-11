@@ -5,26 +5,6 @@
 #include <stdexcept> // std::runtime_error, std::logic_error
 #include <iostream>  // Отладочный вывод
 
-// Прямые объявления системных функций для минимизации включений в .hpp
-// Определения будут в .cpp
-// extern "C"
-// {
-//     int open(const char *pathname, int flags, ...);
-//     int close(int fd);
-//     long sysconf(int name);
-// }
-// // Константы для sysconf
-// #ifndef _SC_PAGE_SIZE
-// #define _SC_PAGE_SIZE 30 // Пример значения, лучше проверить в unistd.h
-// #endif
-// // Флаги для open
-// #ifndef O_RDWR
-// #define O_RDWR 02
-// #endif
-// #ifndef O_NONBLOCK
-// #define O_NONBLOCK 04000
-// #endif
-
 namespace ripc
 {
 

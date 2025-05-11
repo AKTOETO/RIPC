@@ -542,18 +542,10 @@ found:
     }
     sub = conn->m_mem_p;
 
-    // TODO: добавить проверку прав доступа мб
-    // // Проверяем права доступа (процесс должен быть владельцем)
-    // if (shm->m_owner_pid != current->pid)
-    // {
-    //     ERR("Process %d has no access to shm %p\n", current->pid, shm);
-    //     return -EACCES;
-    // }
-
     // Отображаем физическую память в пользовательское пространство
     ret = remap_pfn_range(vma,
                           vma->vm_start,
-                          page_to_pfn(sub->m_pages_p), // virt_to_phys(shm->m_mem_p) >> PAGE_SHIFT,
+                          page_to_pfn(sub->m_pages_p), 
                           sub->m_size,
                           vma->vm_page_prot);
 
@@ -564,10 +556,6 @@ found:
     }
 
     INF("PID %d mapped shm %p (size: %zu)\n", current->pid, sub, sub->m_size);
-
-    // return remap_pfn_range(vma, vma->vm_start, virt_to_phys(shared_buffer) >> PAGE_SHIFT,
-    //                        vma->vm_end - vma->vm_start, vma->vm_page_prot);
-
     return 0;
 }
 

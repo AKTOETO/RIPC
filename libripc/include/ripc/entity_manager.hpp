@@ -173,46 +173,7 @@ namespace ripc
          * @throws std::invalid_argument если тип уведомления некорректен.
          */
         void registerHandler(enum notif_type type, NotificationHandler handler);
-
-        // --- Статические методы для установки лимитов (вызывать ДО initialize) ---
-
-        // /**
-        //  * @brief Устанавливает глобальный лимит на количество одновременно существующих серверов.
-        //  * Должна вызываться до первого вызова ripc::initialize().
-        //  * @param limit Новый лимит.
-        //  */
-        // static void setGlobalServerLimit(size_t limit);
-
-        // /**
-        //  * @brief Устанавливает глобальный лимит на количество одновременно существующих клиентов.
-        //  * Должна вызываться до первого вызова ripc::initialize().
-        //  * @param limit Новый лимит.
-        //  */
-        // static void setGlobalClientLimit(size_t limit);
     };
-
-    // // --- Глобальные функции API (объявления здесь, реализация в ripc_api.cpp) ---
-
-    // /**
-    //  * @brief Инициализирует библиотеку RIPC. Обязательна к вызову перед использованием.
-    //  * @param device_path Путь к файлу устройства драйвера.
-    //  */
-    // void initialize(const std::string &device_path = DEVICE_PATH);
-
-    // /**
-    //  * @brief Завершает работу библиотеки RIPC, освобождая все ресурсы.
-    //  */
-    // void shutdown();
-
-    // /**
-    //  * @brief Регистрирует пользовательский обработчик уведомлений.
-    //  * @param type Тип уведомления.
-    //  * @param handler Функция-обработчик.
-    //  */
-    // void registerNotificationHandler(enum notif_type type, NotificationHandler handler);
-
-    // // Объявления остальных функций API (createServer, createClient, delete*, find*)
-    // // находятся в ripc.hpp
 
 } // namespace ripc
 

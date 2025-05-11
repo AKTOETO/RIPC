@@ -79,7 +79,7 @@ int notification_send(enum notif_sender sender,
                       enum notif_type type,
                       struct connection_t *con)
 {
-    if (!IS_NTF_SEND_VALID(sender)) //|| !con->m_client_p || !con->m_server_p
+    if (!IS_NTF_SEND_VALID(sender))
     {
         ERR("Invalid sender");
         return -ENOPARAM;
@@ -363,27 +363,12 @@ void reg_task_delete(struct reg_task_t *reg_task)
     list_for_each_entry_safe(srv_entry, srv_tmp, &reg_task->m_servers, list)
     {
         reg_task_delete_server(srv_entry);
-        // // Удаляем из списка reg_task
-        // list_del(&srv_entry->list);
-        // if (srv_entry->m_server)
-        // {
-        //     // Удаляем сервер (из глоб. списка и kfree)
-        //     server_destroy(srv_entry->m_server);
-        // }
-        // // Освобождаем элемент списка reg_task
-        // kfree(srv_entry);
     }
 
     // Удалить сами структуры клиентов
     list_for_each_entry_safe(cli_entry, cli_tmp, &reg_task->m_clients, list)
     {
         reg_task_delete_client(cli_entry);
-        // list_del(&cli_entry->list);
-        // if (cli_entry->m_client)
-        //{
-        //     client_destroy(cli_entry->m_client);
-        // }
-        // kfree(cli_entry);
     }
 
     // удаляем список уведомлений

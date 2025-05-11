@@ -26,7 +26,7 @@ namespace ripc
         using CallbackOut = std::function<void(WriteBufferView &)>;
         struct CallbackFull
         {
-            CallbackIn m_in;            
+            CallbackIn m_in;
             CallbackOut m_out;
         };
 
@@ -34,7 +34,7 @@ namespace ripc
         RipcContext &m_context;              // Ссылка на общий контекст
         bool m_initialized = false;          // Успешно ли прошел init (вызов ioctl)
         std::string m_connected_server_name; // имя сервера, к котрому подключен
-        CallbackIn m_callback;             // Обработчик ответа от сервера
+        CallbackIn m_callback;               // Обработчик ответа от сервера
         bool m_is_request_sent;              // отправлен ли запрос
 
         // Информация о разделяемой памяти
@@ -46,9 +46,6 @@ namespace ripc
         // Приватный метод инициализации (выполняет ioctl register)
         void init();
 
-        // Приватный метод для очистки mmap
-        // void cleanup_shm();
-
         // Приватный метод для проверки состояния
         void checkInitialized() const;
         void checkMapped() const;
@@ -56,12 +53,6 @@ namespace ripc
         // Запрет копирования/присваивания
         Client(const Client &) = delete;
         Client &operator=(const Client &) = delete;
-
-        // чтение или запись
-        // size_t write(size_t offset, const void *data, size_t size);
-        // size_t write(size_t offset, const std::string &text);
-        // size_t read(size_t offset, void *buffer, size_t size_to_read);
-        // std::vector<char> read(size_t offset, size_t size_to_read);
 
         // --- Обработка уведомлений ---
         void handleNotification(const notification_data &ntf);
@@ -78,27 +69,12 @@ namespace ripc
         /// @brief отключение от сервера
         void disconnect();
 
-        // void mmap();
-
-        /// @brief Отправка запроса на сервер
-        /// @param url URL, на котоырй уходит запрос в сервер
-        /// @param callback обработчик ответа сервера
-        /// @return был ли отправлен запрос
-        //bool call(const Url &url, CallCallback callback = nullptr);
-
-        /// @brief Отправка запроса на сервер
-        /// @param url URL, на котоырй уходит запрос в сервер
-        /// @param buffer Данные, отправляемые на сервер вместе с запросом
-        /// @param callback обработчик ответа сервера
-        /// @return был ли отправлен запрос
-        //bool call(const Url &url, BufferView &&buffer, CallCallback callback = nullptr);
-
         /// @brief Отправка запроса на сервер
         /// @param url URL запроса
         /// @param in обработчик ответа от сервера
         /// @param out обработчик отправляемых данных
         /// @return отправлены данные (1) или нет (0)
-        bool call(const Url& url, CallbackIn &&in, CallbackOut &&out);
+        bool call(const Url &url, CallbackIn &&in, CallbackOut &&out);
 
         // --- Получение информации ---
         // получение id

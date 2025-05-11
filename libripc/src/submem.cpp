@@ -300,25 +300,6 @@ namespace ripc
         return false;
     }
 
-    // bool Memory::add(char ch)
-    //{
-    //     return add(m_current_size, ch);
-    // }
-
-    /**
-     * --- BUFFER ---
-     */
-
-    // bool BufferView::setMaxSize(size_t size)
-    // {
-    //     if (size <= SHM_REGION_PAGE_SIZE)
-    //     {
-    //         m_max_size = size;
-    //         return true;
-    //     }
-    //     return false;
-    // }
-
     BufferView::BufferView(Memory &mem)
         : m_mem(mem),
           m_headers_finalized(false),
@@ -329,45 +310,9 @@ namespace ripc
             throw std::logic_error("Buffer::Buffer: Memory not mapped");
     }
 
-    // BufferView::BufferView(BufferView &&other)
-    //     : m_current_pos(other.m_current_pos),
-    //       m_headers_finalized(other.m_headers_finalized),
-    //       m_mem(other.m_mem)
-    // {
-    //     other.m_current_pos = 0;
-    //     other.m_headers_finalized = 0;
-    // }
-
-    // BufferView &BufferView::operator=(BufferView &&other)
-    // {
-    //     if (this != &other)
-    //     {
-    //         //BufferView(std::move(other));
-    //     }
-    //     return *this;
-    // }
-
-    // BufferView ::BufferView()
-    //     : m_current_size(0), m_max_size(SHM_REGION_PAGE_SIZE)
-    // {
-    // }
-
-    // const char &BufferView::operator[](size_t index) const
-    //{
-    //     return m_data[index];
-    // }
-    //
-    // const char *BufferView::data() const
-    //{
-    //    return m_data.data();
-    //}
-
     void BufferView::reset()
     {
         m_current_size = 0;
-        // m_mem.m_current_size = 0;
-        //  m_mem.m_read_size = 0;
-        // m_headers_initialized = 0;
         m_headers_finalized = 0;
         m_memory_finalized = 0;
     }

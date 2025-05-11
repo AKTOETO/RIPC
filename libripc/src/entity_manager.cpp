@@ -18,9 +18,7 @@ namespace ripc
     // --- Синглтон ---
     RipcEntityManager &RipcEntityManager::getInstance()
     {
-        // Потокобезопасно в C++11+
         static RipcEntityManager instance;
-        // НЕ проверяем is_initialized здесь, чтобы shutdown мог работать
         return instance;
     }
 
@@ -88,7 +86,6 @@ namespace ripc
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized)
         {
-            // std::cout << "EntityManager: Shutdown called but already not initialized." << std::endl;
             return; // Уже не инициализирован
         }
         std::cout << "EntityManager: Shutting down..." << std::endl;
@@ -110,11 +107,6 @@ namespace ripc
 
     RipcContext &RipcEntityManager::getContext()
     {
-        // Быстрая проверка без блокировки (оптимизация, но требует careful consideration с memory order)
-        // if (!is_initialized || !context) {
-        //      throw std::logic_error("RipcEntityManager or Context not initialized.");
-        // }
-        // Более безопасный вариант - всегда под блокировкой для чтения, т.к. инициализация/очистка меняют context
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized || !context)
         {
@@ -150,8 +142,6 @@ namespace ripc
         // Проверка на коллизию ID (маловероятно, но важно)
         if (servers.count(new_id))
         {
-            // Что делать? Отменить регистрацию в ядре? Сложно. Пока бросаем исключение.
-            // TODO: Возможно, добавить ioctl для отмены регистрации при ошибке здесь.
             throw std::logic_error("Server ID collision detected: " + std::to_string(new_id));
         }
 
@@ -206,7 +196,6 @@ namespace ripc
         if (!is_initialized)
             return false;
 
-        // Метод erase для unordered_map возвращает количество удаленных элементов (0 или 1)
         size_t removed_count = servers.erase(server_id);
 
         if (removed_count > 0)
@@ -219,7 +208,6 @@ namespace ripc
             std::cerr << "EntityManager: Server ID " << server_id << " not found for deletion." << std::endl; // Можно не выводить
             return false;
         }
-        // Деструктор unique_ptr вызывается автоматически при удалении элемента из карты
     }
 
     bool RipcEntityManager::deleteServer(Server *server)
@@ -320,19 +308,19 @@ namespace ripc
         enum notif_type current_type = static_cast<enum notif_type>(ntf.m_type);
         int receiver_id = ntf.m_reciver_id; // Копируем ID получателя
 
-        { // Блок для lock_guard
+        {
             std::lock_guard<std::mutex> lock(manager_mutex);
             if (!is_initialized)
                 return; // Проверка под блокировкой
 
-            // 1. Ищем пользовательский обработчик
+            // Ищем пользовательский обработчик
             auto it_handler = notification_handlers.find(current_type);
             if (it_handler != notification_handlers.end())
             {
-                custom_handler = it_handler->second; // Копируем std::function
+                custom_handler = it_handler->second;
             }
 
-            // 2. Если нет, ищем целевой объект (используем find под той же блокировкой)
+            // Если нет, ищем целевой объект (используем find под той же блокировкой)
             if (!custom_handler)
             {
                 if (ntf.m_who_sends == CLIENT)
@@ -349,14 +337,10 @@ namespace ripc
                     if (it_cli != clients.end())
                         target_client = it_cli->second.get();
                 }
-                // Указатели target_server/target_client валидны только пока держится мьютекс,
-                // если объекты могут быть удалены другим потоком.
-                // НО! Вызов handleNotification вне мьютекса безопасен, т.к. сам объект
-                // еще существует (unique_ptr в карте жив).
             }
-        } // Конец блока lock_guard
+        }
 
-        // 3. Вызов обработчика/метода объекта вне блокировки
+        // Вызов обработчика/метода объекта вне блокировки
         try
         {
             if (custom_handler)
@@ -484,30 +468,4 @@ namespace ripc
 
         std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Exiting." << std::endl;
     }
-
-    // --- Установка лимитов (статические методы) ---
-    // void RipcEntityManager::setGlobalServerLimit(size_t limit)
-    // {
-    //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-    //     if(getInstance().is_initialized)
-    //     {
-    //         std::cerr << "Ripc library should not be initialized for changing server limit\n";
-    //         return;
-    //     }
-    //     getInstance().max_servers = limit;
-    //     std::cout << "Global server limit set to " << limit << std::endl;
-    // }
-
-    // void RipcEntityManager::setGlobalClientLimit(size_t limit)
-    // {
-    //     std::lock_guard<std::mutex> lock(getInstance().manager_mutex);
-    //     if(getInstance().is_initialized)
-    //     {
-    //         std::cerr << "Ripc library should not be initialized for changing client limit\n";
-    //         return;
-    //     }
-    //     getInstance().max_clients = limit;
-    //     std::cout << "Global client limit set to " << limit << std::endl;
-    // }
-
 } // namespace ripc

@@ -346,7 +346,6 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
     }
 
     // глобальная блокировка серверов для удаления подключения
-    // mutex_lock(&srv->m_con_list_lock);
     if (con->conn)
     {
         con->conn->m_server_p = NULL;
@@ -358,7 +357,6 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
 
     list_del(&con->list);
     kfree(con);
-    // mutex_unlock(&srv->m_con_list_lock);
 }
 
 struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
@@ -433,7 +431,4 @@ void delete_server_list()
     struct server_t *server, *server_tmp;
     list_for_each_entry_safe(server, server_tmp, &g_servers_list, list)
         server_destroy(server);
-
-    // удаление генератора id
-    // DELETE_ID_GENERATOR(&g_servers_id_gen);
 }

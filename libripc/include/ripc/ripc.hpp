@@ -1,8 +1,6 @@
 #ifndef RIPC_API_HPP
 #define RIPC_API_HPP
 
-// #include "ripc.h"
-// #include "id_pack.h"
 #include "types.hpp" // Включаем общие типы (NotificationHandler, notif_type)
 #include "server.hpp"
 #include "client.hpp"
@@ -33,20 +31,6 @@ namespace ripc
      * Вызывает деструкторы всех созданных клиентов и серверов.
      */
     void shutdown();
-
-    // --- Настройка лимитов (вызывать ДО initialize) ---
-
-    /**
-     * @brief Устанавливает максимальное количество одновременно существующих серверов.
-     * @param limit Максимальное количество.
-     */
-    void setGlobalServerLimit(size_t limit);
-
-    /**
-     * @brief Устанавливает максимальное количество одновременно существующих клиентов.
-     * @param limit Максимальное количество.
-     */
-    void setGlobalClientLimit(size_t limit);
 
     // --- Создание и удаление сущностей ---
 
