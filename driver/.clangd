@@ -1,63 +1,12 @@
-# Этот файл .clangd предназначен для настройки clangd для модуля ядра Linux.
-
-If:
-  # Применяем эти правила только к .c и .h файлам в директории вашего модуля
-  # Замените 'kernel_module_directory_name' на реальное имя папки вашего модуля
-  # Или используйте более общий PathMatch, если .clangd лежит прямо в папке модуля
-  PathMatch: [driver/.*\.c$, driver/.*\.h$]
-  # Если .clangd лежит прямо в папке модуля, можно использовать:
-  # PathMatch: [.*\.c$, .*\.h$]
-
 CompileFlags:
-  # Сначала удаляем флаги, которые могли прийти из глобальных настроек clangd и не подходят для ядра
-  Remove: [-std=c++*, -stdlib=*, -fcxx-exceptions, -fexceptions]
-
-  # Добавляем флаги, необходимые для компиляции модуля ядра
-  Add:
-    # --- ОСНОВНЫЕ ПУТИ К ЗАГОЛОВКАМ ЯДРА ---
-    # Вам нужно заменить `$(uname -r)` на вашу актуальную версию ядра,
-    # например, 6.1.0-10-amd64, или использовать скрипт для генерации этого файла.
-    # Clangd сам по себе не выполняет shell-команды.
-    - -I/lib/modules/6.14.6-arch1-1/build/include      # Основные заголовки ядра
-    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include  # Архитектурно-зависимые заголовки (для x86)
-    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include/generated # Сгенерированные архитектурно-зависимые заголовки
-
-    # --- ДОПОЛНИТЕЛЬНЫЕ ПУТИ (могут понадобиться) ---
-    # - -I/lib/modules/$(uname -r)/build/include/uapi
-    # - -I/lib/modules/$(uname -r)/build/arch/x86/include/uapi
-    # - -I/lib/modules/$(uname -r)/build/include/generated/uapi
-    
-    # --- ПУТИ К ЗАГОЛОВКАМ ВАШЕГО МОДУЛЯ (если они есть) ---
-    # Если у вас есть свои заголовки в папке модуля или подпапках:
-    # Предполагаем, что .clangd находится в корне проекта, а модуль в 'kernel_module_directory_name'
-    - -Ikernel_module_directory_name # Если заголовки прямо в папке модуля
-    # - -Ikernel_module_directory_name/include # Если у вас есть подпапка include в модуле
-
-    # --- ВАЖНЫЕ ДЕФАЙНЫ И ФЛАГИ ДЛЯ ЯДРА ---
-    - -D__KERNEL__       # Говорит, что это компиляция для ядра
-    - -DMODULE           # Говорит, что компилируется модуль
-    # - -DLINUX_VERSION_CODE=... # Можно указать, если нужно для условной компиляции
-    # - -DKBUILD_MODNAME=\"your_module_name\" # Имя модуля
-
-    # --- ФЛАГИ КОМПИЛЯТОРА ---
-    - -nostdinc          # Не использовать стандартные пути поиска заголовочных файлов C
-    - -fno-common        # Размещать глобальные переменные в секции .bss
-    - -fno-pie           # Не генерировать Position Independent Executable
-    - -no-pie            # Альтернатива для -fno-pie
-    # - -fno-stack-protector # Может понадобиться для некоторых модулей
-    # - -mgeneral-regs-only  # Для x86_64, если есть проблемы с FPU/SSE в обработчиках прерываний
-    - -std=gnu11         # Стандарт C (или gnu89, gnu99, c11 и т.д., в зависимости от вашего кода и ядра)
-    - -Wall              # Включить большинство предупреждений
-    - -Wextra            # Включить дополнительные предупреждения
-    # - -Werror            # Рассматривать предупреждения как ошибки (полезно для чистоты кода)
-    # - -O2                # Уровень оптимизации (может влиять на отладку)
-
-    # --- ДРУГИЕ СПЕЦИФИЧНЫЕ ФЛАГИ ---
-    # Сверьтесь с выводом `make V=1` при сборке вашего модуля, чтобы увидеть все флаги,
-    # которые использует система сборки ядра, и добавьте недостающие.
-    # Например: -mrecord-mcount, -mfentry, -pg, -Wno-declaration-after-statement, и т.д.
-
-# Если вы хотите указать другой CompilationDatabase для этой секции,
-# хотя это обычно не нужно, если вы не используете compile_commands.json для модуля.
-# FallbackFlags:
-#   CompilationDatabase: path/to/specific/compile_commands.json
+  Add: 
+    - -I/usr/src/linux/include
+    - -I/lib/modules/6.14.6-arch1-1/build/include
+    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include
+    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include/generated
+    - -I/../include
+    - -D__KERNEL__
+    - -DMODULE
+    - -std=gnu11
+    - -nostdinc
+    - -isystem /usr/lib/clang/$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)/include
