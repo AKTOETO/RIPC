@@ -7,12 +7,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # Отключаем расширения GNU
 
-# Добавляем предупреждения компилятора
-# add_compile_options(-Wall -Wextra -pedantic)
+# Включаем тестирование
+# Обязательно для использования CTest
+enable_testing()
+include(CTest)
 
 # --- Включение Подкаталогов ---
 # Сначала драйвер (если user-space от него зависит, хотя обычно нет)
-add_subdirectory(driver)
+#add_subdirectory(driver)
 # Затем user-space библиотека
 add_subdirectory(libripc)
 # Затем примеры

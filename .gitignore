@@ -12,3 +12,6 @@ CMakeUserPresets.json
 *.tmp*
 c.bash
 out.txt
+
+# CTest
+Testing
