@@ -6,14 +6,14 @@ namespace ripc
 
     // Обертки над статическими методами синглтона RipcEntityManager
 
-    void initialize(const std::string &device_path)
+    bool initialize(const std::string &device_path)
     {
-        RipcEntityManager::getInstance().doInitialize(device_path);
+        return RipcEntityManager::getInstance().doInitialize(device_path);
     }
 
-    void shutdown()
+    bool shutdown()
     {
-        RipcEntityManager::getInstance().doShutdown();
+        return RipcEntityManager::getInstance().doShutdown();
     }
 
     Server *createServer(const std::string &name)
@@ -55,9 +55,9 @@ namespace ripc
         return RipcEntityManager::getInstance().findClientById(client_id);
     }
 
-    void registerNotificationHandler(enum notif_type type, NotificationHandler handler)
+    bool registerNotificationHandler(enum notif_type type, NotificationHandler handler)
     {
-        RipcEntityManager::getInstance().registerHandler(type, std::move(handler));
+        return RipcEntityManager::getInstance().registerHandler(type, std::move(handler));
     }
 
     // --- Реализация API для управления логгированием ---

@@ -59,16 +59,16 @@ namespace ripc
         RipcEntityManager &operator=(const RipcEntityManager &) = delete;
 
         // Внутренние методы инициализации и завершения (вызываются из глобальных функций)
-        friend void initialize(const std::string &device_path);
-        friend void shutdown();
-        void doInitialize(const std::string &device_path);
-        void doShutdown();
+        friend bool initialize(const std::string &device_path);
+        friend bool shutdown();
+        bool doInitialize(const std::string &device_path);
+        bool doShutdown();
 
         // Основная логика потока-слушателя
-        void notificationListenerLoop();
+        bool notificationListenerLoop();
 
         // Диспетчеризация полученных уведомлений
-        void dispatchNotification(const notification_data &ntf);
+        bool dispatchNotification(const notification_data &ntf);
 
         // проверка инициализации
         bool isInitialized() const;

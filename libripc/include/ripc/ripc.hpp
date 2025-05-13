@@ -25,13 +25,13 @@ namespace ripc
      * @param device_path Путь к файлу устройства драйвера (например, "/dev/ripc").
      * @throws std::runtime_error если инициализация не удалась.
      */
-    void initialize(const std::string &device_path = DEVICE_PATH); // DEVICE_PATH из ripc.h
+    bool initialize(const std::string &device_path = DEVICE_PATH); // DEVICE_PATH из ripc.h
 
     /**
      * @brief Завершает работу библиотеки, освобождает все ресурсы.
      * Вызывает деструкторы всех созданных клиентов и серверов.
      */
-    void shutdown();
+    bool shutdown();
 
     // --- Создание и удаление сущностей ---
 
@@ -108,7 +108,7 @@ namespace ripc
      * @param handler Функция или лямбда вида void(const notification_data&).
      *                Передача пустой функции (nullptr или {}) отменяет регистрацию.
      */
-    void registerNotificationHandler(enum notif_type type, NotificationHandler handler);
+    bool registerNotificationHandler(enum notif_type type, NotificationHandler handler);
 
     // --- Функции API для управления логгированием ---
     /**

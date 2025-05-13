@@ -31,14 +31,14 @@ namespace ripc
     }
 
     // --- Инициализация / Завершение ---
-    void RipcEntityManager::doInitialize(const std::string &device_path)
+    bool RipcEntityManager::doInitialize(const std::string &device_path)
     {
         std::lock_guard<std::mutex> lock(manager_mutex); // Защищаем весь процесс инициализации
         if (is_initialized)
         {
             // throw std::logic_error("RipcEntityManager already initialized.");
             LOG_ERR("RipcEntityManager already initialized");
-            return;
+            return false;
         }
 
         // std::cout << "EntityManager: Initializing..." << std::endl;
@@ -46,7 +46,7 @@ namespace ripc
         context = std::unique_ptr<RipcContext>(new RipcContext());
 
         if (!context->openDevice(device_path))
-            return;
+            return false;
 
         // Запуск потока слушателя
         listener_running.store(true);
@@ -61,16 +61,17 @@ namespace ripc
             is_initialized = false; // Сбросить флаг
             // std::cerr << "EntityManager: Failed to create listener thread." << std::endl;
             LOG_CRIT("Failed to create listener thread: %s", e.what());
-            return;
+            return false;
             // throw std::runtime_error("Failed to create listener thread: " + std::string(e.what()));
         }
 
         is_initialized = true; // Инициализация завершена успешно
         // std::cout << "EntityManager: Initialization complete. Listener thread started." << std::endl;
         LOG_INFO("Initialization complete. Listener thread started.");
+        return true;
     }
 
-    void RipcEntityManager::doShutdown()
+    bool RipcEntityManager::doShutdown()
     {
         // Остановить поток
         if (listener_running.exchange(false))
@@ -96,7 +97,7 @@ namespace ripc
         // Блокируем менеджер для очистки остального
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!isInitialized())
-            return;
+            return false;
 
         LOG_INFO("Shutting down...");
         // std::cout << "EntityManager: Shutting down..." << std::endl;
@@ -119,6 +120,7 @@ namespace ripc
         is_initialized = false;
         // std::cout << "EntityManager: Shutdown finished." << std::endl;
         LOG_INFO("Shutdown finished");
+        return true;
     }
 
     RipcContext &RipcEntityManager::getContext()
@@ -378,7 +380,7 @@ namespace ripc
         return true;
     }
 
-    void RipcEntityManager::dispatchNotification(const notification_data &ntf)
+    bool RipcEntityManager::dispatchNotification(const notification_data &ntf)
     {
         // Базовые проверки валидности
         // if (!IS_NTF_TYPE_VALID(ntf.m_type) || !IS_NTF_SEND_VALID(ntf.m_who_sends) || !IS_ID_VALID(ntf.m_reciver_id))
@@ -389,7 +391,7 @@ namespace ripc
 
             // std::cerr << "Dispatcher: Invalid notification received (type=" << ntf.m_type
             //           << ", sender=" << ntf.m_who_sends << ", receiver=" << ntf.m_reciver_id << ")" << std::endl;
-            return;
+            return false;
         }
 
         // NotificationHandler custom_handler = nullptr;
@@ -404,7 +406,7 @@ namespace ripc
             if (!is_initialized)
             {
                 LOG_CRIT("Manager not initialized");
-                return;
+                return false;
             }
 
             // Ищем пользовательский обработчик
@@ -413,7 +415,7 @@ namespace ripc
             {
                 LOG_INFO("Found a custom handler");
                 it_handler->second(ntf);
-                return;
+                return true;
             }
 
             // Если нет, ищем целевой объект (используем find под той же блокировкой)
@@ -429,7 +431,7 @@ namespace ripc
                 {
                     LOG_INFO("Found server's handler");
                     it_srv->second->handleNotification(ntf);
-                    return;
+                    return true;
                 }
             }
             // К клиенту
@@ -442,7 +444,7 @@ namespace ripc
                 {
                     LOG_INFO("Found client's handler");
                     it_cli->second->handleNotification(ntf);
-                    return;
+                    return true;
                 }
             }
             else
@@ -481,6 +483,7 @@ namespace ripc
         // {
         //     std::cerr << "Dispatcher: Unknown exception during notification handling." << std::endl;
         // }
+        return true;
     }
 
     bool RipcEntityManager::isInitialized() const
@@ -488,7 +491,7 @@ namespace ripc
         return is_initialized;
     }
 
-    void RipcEntityManager::notificationListenerLoop()
+    bool RipcEntityManager::notificationListenerLoop()
     {
         LOG_INFO("[Listener Thread %d]: Started", std::this_thread::get_id());
         // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Started." << std::endl;
@@ -504,7 +507,7 @@ namespace ripc
             LOG_CRIT("[Listener Thread %d]: Failed to get device fd: %s. Stopping",
                      std::this_thread::get_id(), e.what());
             listener_running.store(false);
-            return;
+            return false;
         }
         if (local_fd < 0)
         {
@@ -512,12 +515,13 @@ namespace ripc
                      std::this_thread::get_id());
             // std::cerr << "[Listener Thread]: Failed to get device fd: " << << ". Stopping." << std::endl;
             listener_running.store(false);
-            return;
+            return false;
         }
 
         pollfd pfd;
         pfd.fd = local_fd;
         pfd.events = POLLIN; // Ждем данные для чтения
+        bool ret = true;
 
         while (listener_running.load())
         {
@@ -535,6 +539,7 @@ namespace ripc
                          std::this_thread::get_id(), strerror(errno));
                 // perror("[Listener Thread]: poll failed");
                 listener_running.store(false); // Ошибка, останавливаем поток
+                ret = false;
                 break;
             }
             else if (ret == 0)
@@ -550,6 +555,7 @@ namespace ripc
                 // std::cerr << "[Listener Thread]: Error/Hangup/Invalid event on fd (revents: 0x"
                 //           << std::hex << pfd.revents << std::dec << "). Stopping." << std::endl;
                 listener_running.store(false);
+                ret = false;
                 break;
             }
 
@@ -601,6 +607,7 @@ namespace ripc
         // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Exiting." << std::endl;
         LOG_INFO("[Listener Thread %d]: stopped",
                  std::this_thread::get_id());
+        return ret;
     }
 
 } // namespace ripc
