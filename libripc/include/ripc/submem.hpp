@@ -40,8 +40,8 @@ namespace ripc
         // отображена ли память
         bool m_is_mapped;
 
-        void mmap(int first_id, int second_id);
-        void unmap();
+        bool mmap(int first_id, int second_id);
+        bool unmap();
 
         // элемент после последнего
         char* end() const;
@@ -122,6 +122,15 @@ namespace ripc
         /// @brief Обработчик завершения секции полезной нагрухки
         /// @return 1 - удачное закрытие секции полезной нагрузки, 0 - секция полезной нагрузки не закрыта
         virtual bool finalizePayload() = 0;
+
+        /// @brief Получение буфера в виде си строки
+        /// @param ch куда будет записан буфер
+        /// @return длина буфера
+        size_t getCharStr(const char** ch) const;
+
+        /// @brief Получение буфера в виде c++ строки
+        /// @return std::string 
+        std::string getStr() const;
 
         /// @brief Вывод буфера в поток
         /// @param out поток для вывода

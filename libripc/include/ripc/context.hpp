@@ -15,22 +15,22 @@ namespace ripc
     private:
         friend class RipcEntityManager; // Только менеджер создает и управляет
 
-        int device_fd = -1;
-        long page_size = 4096; // Значение по умолчанию
+        int device_fd;
+        long page_size; // Значение по умолчанию
         std::string device_path;
-        bool initialized = false;
+        bool initialized;
 
         // Приватный конструктор, вызывается менеджером
-        RipcContext() = default;
+        RipcContext();
 
         // Запрет копирования/присваивания (управление ресурсом fd)
         RipcContext(const RipcContext &) = delete;
         RipcContext &operator=(const RipcContext &) = delete;
 
         // Внутренние методы инициализации/очистки, вызываемые менеджером
-        void openDevice(const std::string &path);
-        void closeDevice();
-        void determinePageSize();
+        bool openDevice(const std::string &path);
+        bool closeDevice();
+        bool determinePageSize();
 
     public:
         // Деструктор закрывает устройство

@@ -1,5 +1,5 @@
-#include "ripc/entity_manager.hpp" // Полное определение менеджера
-#include "ripc/ripc.hpp"           // Публичный API (только объявления)
+#include "ripc/entity_manager.hpp"
+#include "ripc/ripc.hpp"
 
 namespace ripc
 {
@@ -59,4 +59,21 @@ namespace ripc
     {
         RipcEntityManager::getInstance().registerHandler(type, std::move(handler));
     }
+
+    // --- Реализация API для управления логгированием ---
+    void setLogLevel(LogLevel level)
+    {
+        Logger::getInstance().setLevel(level);
+    }
+
+    void setLogStream(std::ostream *os)
+    {
+        Logger::getInstance().setOutputStream(os);
+    }
+
+    void setCriticalLogBehavior(Logger::CriticalBehavior behavior)
+    {
+        Logger::getInstance().setCriticalBehavior(behavior);
+    }
+
 } // namespace ripc

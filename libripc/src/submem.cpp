@@ -1,3 +1,4 @@
+#include "ripc/logger.hpp"
 #include "ripc/submem.hpp"
 #include "id_pack.h"
 #include <iostream>
@@ -7,6 +8,44 @@
 
 namespace ripc
 {
+
+#define CHECK_MAPPED_IR(in, val)           \
+    {                                      \
+        if (!in.m_is_mapped)               \
+        {                                  \
+            LOG_ERR("memory not mmapped"); \
+            return val;                    \
+        }                                  \
+    }
+
+#define CHECK_MMAPED_R(val) CHECK_MAPPED_IR((*this), val)
+
+#define CHECK_MMAPED CHECK_MMAPED_R(false)
+
+#define CHECK_ADDR_IR(in, val)          \
+    {                                   \
+        if (!in.m_addr)                 \
+        {                               \
+            LOG_ERR("addres is empty"); \
+            return val;                 \
+        }                               \
+    }
+
+#define CHECK_ADDR_R(val) CHECK_ADDR_IR((*this), val)
+
+#define CHECK_ADDR CHECK_ADDR_R(false)
+
+#define CHECK_OFFSET_R(val)                     \
+    {                                           \
+        if (offset < 0 || offset >= m_max_size) \
+        {                                       \
+            LOG_ERR("invalid offset");          \
+            return val;                         \
+        }                                       \
+    }
+
+#define CHECK_OFFSET CHECK_OFFSET_R(false)
+
     Memory::Memory(RipcContext &context)
         : m_context(context), m_addr(nullptr),
           m_is_mapped(false), m_max_size(-1)
@@ -19,26 +58,31 @@ namespace ripc
         unmap();
     }
 
-    void Memory::mmap(int first_id, int second_id)
+    bool Memory::mmap(int first_id, int second_id)
     {
         // инициализирован ли контекст
         if (!m_context.isInitialized())
         {
-            throw std::runtime_error("SubMem::mmap: Context is not initialized");
+            // throw std::runtime_error("SubMem::mmap: Context is not initialized");
+            LOG_ERR("Context is not initialized");
+            return false;
         }
 
         // запаковывание id {(client, 0) or (server, submem)}
         u32 packed_id = pack_ids(first_id, second_id);
         if (packed_id == (u32)-EINVAL)
         {
-            throw std::runtime_error(
-                "SubMem::mmap: " +
-                std::to_string(first_id) + ": Failed to pack ID for mmap.");
+            // throw std::runtime_error(
+            //     "SubMem::mmap: " +
+            //     std::to_string(first_id) + ": Failed to pack ID for mmap.");
+            LOG_ERR("(%d, %d) failed to pack id for mmap", first_id, second_id);
+            return false;
         }
 
         off_t offset = (off_t)packed_id * m_context.getPageSize();
-        std::cout << "SubMem::mmap: " << first_id << ": Attempting mmap with offset 0x"
-                  << std::hex << offset << " (packed 0x" << packed_id << ")" << std::dec << std::endl;
+        // std::cout << "SubMem::mmap: " << first_id << ": Attempting mmap with offset 0x"
+        //           << std::hex << offset << " (packed 0x" << packed_id << ")" << std::dec << std::endl;
+        LOG_INFO("%d Attempt to call mmap with offset 0x%x (packed 0x%x)", first_id, offset, packed_id);
 
         // запрос на отображение памяти
         char *addr = static_cast<char *>(
@@ -48,8 +92,9 @@ namespace ripc
         if (addr == MAP_FAILED)
         {
             int err_code = errno;
-            throw std::runtime_error("SubMem::mmap: " +
-                                     std::to_string(first_id) + ": mmap failed: " + strerror(err_code));
+            // throw std::runtime_error("SubMem::mmap: " +
+            //                          std::to_string(first_id) + ": mmap failed: " + strerror(err_code));
+            LOG_ERR("%d mmap failed: %s", first_id, strerror(err_code));
         }
 
         // запись результатов
@@ -57,27 +102,36 @@ namespace ripc
         m_is_mapped = true;
         // m_current_size =
         m_max_size = SHM_REGION_PAGE_SIZE;
-    }
-    void Memory::unmap()
-    {
-        if (!m_is_mapped)
-        {
-            std::cerr << "SubMem::unmap: memory already unmapped\n";
-            return;
-        }
 
-        if (!m_addr)
-        {
-            std::cerr << "SubMem::unmap: addres is empty\n";
-        }
+        return true;
+    }
+    bool Memory::unmap()
+    {
+        // if (!m_is_mapped)
+        // {
+        //     // std::cerr << "SubMem::unmap: memory already unmapped\n";
+        //     LOG_ERR("memory not mmapped");
+        //     return false;
+        // }
+
+        // if (!m_addr)
+        // {
+        //     std::cerr << "SubMem::unmap: addres is empty\n";
+        // }
+
+        CHECK_MMAPED_R(true)
+        CHECK_ADDR
 
         if (munmap(m_addr, (m_max_size == -1 ? SHM_REGION_PAGE_SIZE : m_max_size)) != 0)
         {
             int err_code = errno;
-            throw std::runtime_error("SubMem::unmap: munmap failed: " + std::string(strerror(err_code)));
+            // throw std::runtime_error("SubMem::unmap: munmap failed: " + std::string(strerror(err_code)));
+            LOG_ERR("munmap failed: ", strerror(errno));
+            return false;
         }
 
         m_is_mapped = false;
+        return true;
     }
 
     char *Memory::end() const
@@ -87,20 +141,28 @@ namespace ripc
 
     char *Memory::find(size_t offset, char ch)
     {
-        if (!m_addr || !m_is_mapped)
-        {
-            std::cerr << "Memory::find: memory already unmapped\n";
-            return nullptr;
-        }
+        CHECK_MMAPED_R(nullptr);
+        CHECK_ADDR_R(nullptr)
+        CHECK_OFFSET_R(nullptr)
+        // if (!m_addr || !m_is_mapped)
+        //{
+        //     //std::cerr << "Memory::find: memory already unmapped\n";
+        //     LOG_ERR("")
+        //     return nullptr;
+        // }
+        //
+        // if (!m_addr)
+        //{
+        //    std::cerr << "Memory::find: addres is empty\n";
+        //    return nullptr;
+        //}
 
-        if (!m_addr)
-        {
-            std::cerr << "Memory::find: addres is empty\n";
-            return nullptr;
-        }
-
-        if (offset < 0 || offset >= m_max_size)
-            throw std::invalid_argument("SubMem::read: invalid argument");
+        // if (offset < 0 || offset >= m_max_size)
+        //{
+        //     LOG_ERR("invalid offset");
+        //     return nullptr;
+        //     // throw std::invalid_argument("SubMem::read: invalid argument");
+        // }
 
         for (size_t i = offset; i < m_max_size; i++)
         {
@@ -117,20 +179,20 @@ namespace ripc
 
     char *Memory::find(size_t offset, const char *ch, size_t len)
     {
-        if (!m_addr || !m_is_mapped)
-        {
-            std::cerr << "Memory::find: memory already unmapped\n";
-            return nullptr;
-        }
+        // if (!m_addr || !m_is_mapped)
+        // {
+        //     std::cerr << "Memory::find: memory already unmapped\n";
+        //     return nullptr;
+        // }
 
-        if (!m_addr)
-        {
-            std::cerr << "Memory::find: addres is empty\n";
-            return nullptr;
-        }
-
-        if (offset < 0 || offset >= m_max_size)
-            throw std::invalid_argument("SubMem::read: invalid argument");
+        // if (!m_addr)
+        // {
+        //     std::cerr << "Memory::find: addres is empty\n";
+        //     return nullptr;
+        // }
+        CHECK_MMAPED_R(nullptr);
+        CHECK_ADDR_R(nullptr)
+        CHECK_OFFSET_R(nullptr)
 
         for (size_t i = 0; i < len; i++)
         {
@@ -146,20 +208,23 @@ namespace ripc
 
     char *Memory::find(size_t offset, const std::string &chars)
     {
-        if (!m_addr || !m_is_mapped)
-        {
-            std::cerr << "Memory::find: memory already unmapped\n";
-            return nullptr;
-        }
+        CHECK_MMAPED_R(nullptr);
+        CHECK_ADDR_R(nullptr)
+        CHECK_OFFSET_R(nullptr)
+        // if (!m_addr || !m_is_mapped)
+        // {
+        //     std::cerr << "Memory::find: memory already unmapped\n";
+        //     return nullptr;
+        // }
 
-        if (!m_addr)
-        {
-            std::cerr << "Memory::find: addres is empty\n";
-            return nullptr;
-        }
+        // if (!m_addr)
+        // {
+        //     std::cerr << "Memory::find: addres is empty\n";
+        //     return nullptr;
+        // }
 
-        if (offset < 0 || offset >= m_max_size)
-            throw std::invalid_argument("SubMem::read: invalid argument");
+        // if (offset < 0 || offset >= m_max_size)
+        //     throw std::invalid_argument("SubMem::read: invalid argument");
 
         for (size_t i = offset; i < m_max_size; i++)
         {
@@ -175,10 +240,18 @@ namespace ripc
 
     size_t Memory::readUntil(size_t offset, char *buffer, size_t buffer_size, char delim)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
-        if (offset < 0 || offset >= m_max_size || !buffer || buffer_size < 0)
-            throw std::invalid_argument("SubMem::readUntil: invalid argument");
+        CHECK_MMAPED_R(-1);
+        CHECK_ADDR_R(-1);
+        CHECK_OFFSET_R(-1);
+        // if (!m_is_mapped || !m_addr)
+        //     throw std::logic_error("Memory::write: Shared memory is not mapped.");
+        // if (offset < 0 || offset >= m_max_size || !buffer || buffer_size < 0)
+        //     throw std::invalid_argument("SubMem::readUntil: invalid argument");
+        if (!buffer || buffer_size < 0)
+        {
+            LOG_ERR("invalid buffer");
+            return -1;
+        }
 
         // высчитываем смещение
         size_t available = m_max_size - offset;
@@ -199,10 +272,18 @@ namespace ripc
 
     size_t Memory::read(size_t offset, char *buffer, size_t buffer_size)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
-        if (offset < 0 || offset >= m_max_size || !buffer || buffer_size < 0)
-            throw std::invalid_argument("SubMem::read: invalid argument");
+        // if (!m_is_mapped || !m_addr)
+        //     throw std::logic_error("Memory::write: Shared memory is not mapped.");
+        // if (offset < 0 || offset >= m_max_size || !buffer || buffer_size < 0)
+        //     throw std::invalid_argument("SubMem::read: invalid argument");
+        CHECK_MMAPED_R(-1);
+        CHECK_ADDR_R(-1);
+        CHECK_OFFSET_R(-1);
+        if (!buffer || buffer_size < 0)
+        {
+            LOG_ERR("invalid buffer");
+            return -1;
+        }
 
         // высчитываем смещение
         size_t available = m_max_size - offset;
@@ -221,10 +302,18 @@ namespace ripc
 
     std::string Memory::read(size_t offset, size_t buffer_size)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
-        if (offset < 0 || offset >= m_max_size || buffer_size < 0)
-            throw std::invalid_argument("SubMem::read: invalid argument");
+        // if (!m_is_mapped || !m_addr)
+        //     throw std::logic_error("Memory::write: Shared memory is not mapped.");
+        // if (offset < 0 || offset >= m_max_size || !buffer || buffer_size < 0)
+        //     throw std::invalid_argument("SubMem::read: invalid argument");
+        CHECK_MMAPED_R("");
+        CHECK_ADDR_R("");
+        CHECK_OFFSET_R("");
+        if (buffer_size < 0)
+        {
+            LOG_ERR("invalid buffer");
+            return "";
+        }
 
         // высчитываем смещение
         size_t available = m_max_size - offset;
@@ -244,10 +333,18 @@ namespace ripc
 
     size_t Memory::write(size_t offset, const char *buffer, size_t buffer_size)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
-        if (!buffer || buffer_size < 0 || offset >= m_max_size)
-            throw std::invalid_argument("Memory::write: Input buffer is null or offset bigger then max_size");
+        // if (!m_is_mapped || !m_addr)
+        //     throw std::logic_error("Memory::write: Shared memory is not mapped.");
+        // if (!buffer || buffer_size < 0 || offset >= m_max_size)
+        //     throw std::invalid_argument("Memory::write: Input buffer is null or offset bigger then max_size");
+        CHECK_MMAPED_R(-1);
+        CHECK_ADDR_R(-1);
+        CHECK_OFFSET_R(-1);
+        if (!buffer || buffer_size < 0)
+        {
+            LOG_ERR("invalid buffer");
+            return -1;
+        }
 
         // Определяем, сколько байт можно записать
         size_t available_space = m_max_size - offset;
@@ -264,9 +361,11 @@ namespace ripc
 
         if (write_len < buffer_size)
         {
-            std::cerr << "Memory::write: Warning - Data truncated. Tried to write "
-                      << buffer_size << " bytes, but only " << write_len
-                      << " bytes fit at offset " << offset << "." << std::endl;
+            // std::cerr << "Memory::write: Warning - Data truncated. Tried to write "
+            //           << buffer_size << " bytes, but only " << write_len
+            //           << " bytes fit at offset " << offset << "." << std::endl;
+            LOG_WARN("Data truncated. Tried to write %d bytes, but only %d bytes fit at offset %d",
+                     buffer_size, write_len, offset);
         }
 
         return write_len;
@@ -274,8 +373,10 @@ namespace ripc
 
     size_t Memory::write(size_t offset, std::string data)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
+        CHECK_MMAPED_R(-1);
+        CHECK_ADDR_R(-1);
+        // if (!m_is_mapped || !m_addr)
+        //     throw std::logic_error("Memory::write: Shared memory is not mapped.");
         return write(offset, data.data(), data.size());
     }
 
@@ -286,18 +387,13 @@ namespace ripc
 
     bool Memory::add(size_t offset, char ch)
     {
-        if (!m_is_mapped || !m_addr)
-            throw std::logic_error("Memory::write: Shared memory is not mapped.");
-        if (offset >= m_max_size)
-            throw std::invalid_argument("Memory::write: Offset bigger then max_size.");
+        CHECK_MMAPED;
+        CHECK_ADDR;
+        CHECK_OFFSET;
 
-        if (offset < m_max_size)
-        {
-            char *dest = static_cast<char *>(m_addr) + offset;
-            *dest = ch;
-            return true;
-        }
-        return false;
+        char *dest = static_cast<char *>(m_addr) + offset;
+        *dest = ch;
+        return true;
     }
 
     BufferView::BufferView(Memory &mem)
@@ -307,7 +403,8 @@ namespace ripc
           m_current_size(0)
     {
         if (!mem.m_is_mapped)
-            throw std::logic_error("Buffer::Buffer: Memory not mapped");
+            LOG_ERR("Memory not mapped");
+        //    throw std::logic_error("Buffer::Buffer: Memory not mapped");
     }
 
     void BufferView::reset()
@@ -336,29 +433,33 @@ namespace ripc
             return out;
         }
 
-        const char *start_ptr = static_cast<const char *>(buffer.m_mem.m_addr);
-        size_t buffer_capacity = buffer.m_mem.m_max_size;
-        size_t len_to_write = 0;
+        // const char *start_ptr = static_cast<const char *>(buffer.m_mem.m_addr);
+        // size_t buffer_capacity = buffer.m_mem.m_max_size;
+        // size_t len_to_write = 0;
 
-        // Ищем символ m_memory_finalizer ('\0') или конец буфера
-        const char *end_marker_ptr = static_cast<const char *>(
-            memchr(start_ptr, BufferView::m_memory_finalizer, buffer_capacity));
+        // // Ищем символ m_memory_finalizer ('\0') или конец буфера
+        // const char *end_marker_ptr = static_cast<const char *>(
+        //     memchr(start_ptr, BufferView::m_memory_finalizer, buffer_capacity));
 
-        if (end_marker_ptr != nullptr)
-        {
-            // Финализатор ('\0') найден, выводим данные до него
-            len_to_write = static_cast<size_t>(end_marker_ptr - start_ptr);
-        }
-        else
-        {
-            // Финализатор ('\0') не найден, выводим все до конца емкости буфера
-            len_to_write = buffer_capacity;
-        }
+        // if (end_marker_ptr != nullptr)
+        // {
+        //     // Финализатор ('\0') найден, выводим данные до него
+        //     len_to_write = static_cast<size_t>(end_marker_ptr - start_ptr);
+        // }
+        // else
+        // {
+        //     // Финализатор ('\0') не найден, выводим все до конца емкости буфера
+        //     len_to_write = buffer_capacity;
+        // }
 
         // Выводим определенное количество байт.
         // Это безопасно, даже если len_to_write == 0.
         // Использование out.write() корректно обработает встроенные нулевые символы,
         // если они ВНУТРИ len_to_write (хотя по логике до m_memory_finalizer их быть не должно).
+
+        const char *start_ptr;
+        size_t len_to_write = buffer.getCharStr(&start_ptr);
+
         if (len_to_write > 0)
         {
             out.write(start_ptr, len_to_write);
@@ -376,17 +477,20 @@ namespace ripc
     {
         if (m_memory_finalized)
         {
-            std::cerr << "BufferView Error: Message already finalized\n";
+            // std::cerr << "BufferView Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return false;
         }
         if (m_headers_finalized)
         {
-            std::cerr << "BufferView Error: Cannot add headers after payload section started." << std::endl;
+            // std::cerr << "BufferView Error: Cannot add headers after payload section started." << std::endl;
+            LOG_ERR("Cannot add headers after payload section started");
             return false;
         }
         if (!m_mem.m_is_mapped)
         {
-            std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            // std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            LOG_ERR("memory is not mapped");
             return false;
         }
 
@@ -395,7 +499,8 @@ namespace ripc
         {
             if (!m_mem.add(m_current_size, m_header_delimeter))
             {
-                std::cerr << "BufferView Error: cannot add header delimeter" << std::endl;
+                // std::cerr << "BufferView Error: cannot add header delimeter" << std::endl;
+                LOG_ERR("cannot add header delimeter");
                 return false;
             }
             m_current_size++;
@@ -425,7 +530,8 @@ namespace ripc
         {
             if (m_headers_finalized)
                 return true;
-            std::cerr << "BufferView Error: Message already finalized\n";
+            // std::cerr << "BufferView Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return false;
         }
         if (m_headers_finalized)
@@ -433,14 +539,16 @@ namespace ripc
 
         if (!m_mem.m_is_mapped)
         {
-            std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            // std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            LOG_ERR("memory is not mapped");
             return false;
         }
 
         // добавляем разделитель
         if (!m_mem.add(m_current_size, m_memory_delimeter))
         {
-            std::cerr << "BufferView Error: Cannot add message delimeter" << std::endl;
+            // std::cerr << "BufferView Error: Cannot add message delimeter" << std::endl;
+            LOG_ERR("cannot add message delimeter");
             return false;
         }
         m_current_size++;
@@ -453,7 +561,8 @@ namespace ripc
         // если сообщение уже записано
         if (m_memory_finalized)
         {
-            std::cerr << "BufferView Error: Message already finalized\n";
+            // std::cerr << "BufferView Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return false;
         }
 
@@ -464,6 +573,7 @@ namespace ripc
             if (!finalizeHeader())
             {
                 std::cerr << "BufferView::addPayload: cannot finalize headers\n";
+                LOG_ERR("cannot finalize headers");
                 return false;
             }
         }
@@ -473,7 +583,8 @@ namespace ripc
         // записываем данные
         if ((size = m_mem.write(m_current_size, data, len)) <= 0)
         {
-            std::cerr << "BufferView::addPayload: payload was not wroted\n";
+            // std::cerr << "BufferView::addPayload: payload was not written\n";
+            LOG_ERR("payload was not written");
             return false;
         }
         m_current_size += size;
@@ -488,6 +599,7 @@ namespace ripc
 
     bool WriteBufferView::finalizePayload()
     {
+
         if (!m_mem.m_addr || !m_mem.m_is_mapped)
             return false;
         if (m_memory_finalized)
@@ -496,7 +608,8 @@ namespace ripc
         {
             if (!finalizeHeader())
             {
-                std::cerr << "WriteBufferView::finalizePayload: cannot finalize headers\n";
+                // std::cerr << "WriteBufferView::finalizePayload: cannot finalize headers\n";
+                LOG_ERR("cannot finalize headers");
                 return false;
             }
         }
@@ -504,13 +617,51 @@ namespace ripc
         // записываем конец сообщения
         if (!m_mem.add(m_current_size, m_memory_finalizer))
         {
-            std::cerr << "WriteBufferView::finalizePayload: cannot finalize memory\n";
+            // std::cerr << "WriteBufferView::finalizePayload: cannot finalize memory\n";
+            LOG_ERR("cannot finalize memory");
             return false;
         }
         m_current_size++;
 
         m_memory_finalized = 1;
         return true;
+    }
+
+    size_t BufferView::getCharStr(const char **ch) const
+    {
+        // Проверяем, что память, на которую указывает BufferView, валидна и отображена
+        if (!m_mem.m_is_mapped || !m_mem.m_addr)
+        {
+            LOG_WARN("Memory not mapped or invalid");
+            return -1;
+        }
+
+        *ch = static_cast<const char *>(m_mem.m_addr);
+        size_t buffer_capacity = m_mem.m_max_size;
+        size_t len_to_write = 0;
+
+        // Ищем символ m_memory_finalizer ('\0') или конец буфера
+        const char *end_marker_ptr = static_cast<const char *>(
+            memchr(*ch, m_memory_finalizer, buffer_capacity));
+
+        if (end_marker_ptr != nullptr)
+        {
+            // Финализатор ('\0') найден, выводим данные до него
+            len_to_write = static_cast<size_t>(end_marker_ptr - (*ch));
+        }
+        else
+        {
+            // Финализатор ('\0') не найден, выводим все до конца емкости буфера
+            len_to_write = buffer_capacity;
+        }
+        return len_to_write;
+    }
+
+    std::string BufferView::getStr() const
+    {
+        const char *ch;
+        auto size = getCharStr(&ch);
+        return std::string(ch, size);
     }
 
     ReadBufferView::ReadBufferView(Memory &mem)
@@ -522,17 +673,20 @@ namespace ripc
     {
         if (m_memory_finalized)
         {
-            std::cerr << "BufferView Error: Message already finalized\n";
+            // std::cerr << "BufferView Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return std::nullopt;
         }
         if (m_headers_finalized)
         {
-            std::cerr << "BufferView Error: Cannot add headers after payload section started." << std::endl;
+            // std::cerr << "BufferView Error: Cannot add headers after payload section started." << std::endl;
+            LOG_ERR("Cannot add headers after payload section started");
             return std::nullopt;
         }
         if (!m_mem.m_is_mapped)
         {
-            std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            // std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            LOG_ERR("memory is no mapped");
             return std::nullopt;
         }
 
@@ -580,20 +734,23 @@ namespace ripc
     {
         if (m_memory_finalized)
         {
-            std::cerr << "ReadBufferView::getPayload Error: Message already finalized\n";
+            // std::cerr << "BufferView Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return std::nullopt;
         }
         if (!m_headers_finalized)
         {
             if (!finalizeHeader())
             {
-                std::cerr << "ReadBufferView::getPayload Error: Cannot finalize header." << std::endl;
+                // std::cerr << "WriteBufferView::finalizePayload: cannot finalize headers\n";
+                LOG_ERR("cannot finalize headers");
                 return std::nullopt;
             }
         }
         if (!m_mem.m_is_mapped)
         {
-            std::cerr << "ReadBufferView::getPayload Error: memory is not mapped" << std::endl;
+            // std::cerr << "BufferView Error: memory is no mapped" << std::endl;
+            LOG_ERR("memory is no mapped");
             return std::nullopt;
         }
 
@@ -629,7 +786,7 @@ namespace ripc
             if (m_headers_finalized)
                 return true;
 
-            std::cerr << "ReadBufferView:finalizeHeader Error: Message already finalized\n";
+            LOG_ERR("Message already finalized");
             return false;
         }
         if (m_headers_finalized)
@@ -637,7 +794,7 @@ namespace ripc
 
         if (!m_mem.m_is_mapped)
         {
-            std::cerr << "ReadBufferView:finalizeHeader Error: memory is no mapped" << std::endl;
+            LOG_ERR("memory is no mapped");
             return false;
         }
 
@@ -646,7 +803,7 @@ namespace ripc
 
         if (!delim || delim == m_mem.end())
         {
-            std::cerr << "ReadBufferView:finalizeHeader Error: '" << *delim << "' is not a memory delimeter" << std::endl;
+            LOG_ERR("'%s' is not a memory delimeter", *delim);
             return false;
         }
 
@@ -666,7 +823,7 @@ namespace ripc
         {
             if (!finalizeHeader())
             {
-                std::cerr << "ReadBufferView::finalizePayload: cannot finalize headers\n";
+                LOG_ERR("cannot finalize headers");
                 return false;
             }
         }
@@ -676,7 +833,7 @@ namespace ripc
 
         if (!delim || delim == m_mem.end())
         {
-            std::cerr << "ReadBufferView::finalizePayload: cannot find message finisher\n";
+            LOG_ERR("cannot find message finisher");
             return false;
         }
 

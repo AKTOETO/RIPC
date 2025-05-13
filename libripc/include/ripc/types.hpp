@@ -1,15 +1,15 @@
 #ifndef RIPC_TYPES_HPP
 #define RIPC_TYPES_HPP
 
-#include <functional> // std::function
+#include <functional>
 #include <string>
 #include <vector>
-#include <cstddef> // size_t
-#include <cstdint> // intptr_t
+#include <cstddef>
+#include <cstdint>
 
 // Включаем оригинальный ripc.h для базовых структур и констант
 #include "ripc.h"
-#include "id_pack.h" // Для IS_ID_VALID и т.д.
+#include "id_pack.h"
 
 // Если не определен map failed
 #ifndef MAP_FAILED

@@ -1,11 +1,12 @@
 #ifndef RIPC_API_HPP
 #define RIPC_API_HPP
 
-#include "types.hpp" // Включаем общие типы (NotificationHandler, notif_type)
+#include "logger.hpp"
+#include "types.hpp"
 #include "server.hpp"
 #include "client.hpp"
-#include <string>  // Для аргументов функций
-#include <cstddef> // size_t
+#include <string>
+#include <cstddef>
 
 // --- Публичный интерфейс библиотеки RIPC ---
 
@@ -64,7 +65,7 @@ namespace ripc
      * @param server Указатель на объект сервера.
      * @return true, если сервер был найден и удален, иначе false.
      */
-    bool deleteServer(Server* server);
+    bool deleteServer(Server *server);
 
     /**
      * @brief Удаляет экземпляр клиента по его ID ядра.
@@ -73,7 +74,7 @@ namespace ripc
      * @return true, если клиент был найден и удален, иначе false.
      */
     bool deleteClient(int client_id);
-    
+
     /**
      * @brief Удаляет экземпляр клиента.
      * Вызывает деструктор объекта Client и освобождает связанные ресурсы.
@@ -108,6 +109,27 @@ namespace ripc
      *                Передача пустой функции (nullptr или {}) отменяет регистрацию.
      */
     void registerNotificationHandler(enum notif_type type, NotificationHandler handler);
+
+    // --- Функции API для управления логгированием ---
+    /**
+     * @brief Устанавливает минимальный уровень логгирования.
+     * Сообщения с уровнем ниже указанного не будут выводиться/обрабатываться.
+     * @param level Минимальный уровень логгирования.
+     */
+    void setLogLevel(LogLevel level);
+
+    /**
+     * @brief Устанавливает пользовательский поток для вывода логов.
+     * По умолчанию используется std::cerr.
+     * @param os Указатель на поток вывода. Если nullptr, используется std::cerr.
+     */
+    void setLogStream(std::ostream *os);
+
+    /**
+     * @brief Устанавливает поведение при критических ошибках (уровень CRITICAL).
+     * @param behavior THROW_EXCEPTION (бросать CriticalLogError) или LOG_ONLY.
+     */
+    void setCriticalLogBehavior(Logger::CriticalBehavior behavior);
 
 } // namespace ripc
 

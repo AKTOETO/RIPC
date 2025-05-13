@@ -1,3 +1,4 @@
+#include "ripc/logger.hpp"
 #include "ripc/entity_manager.hpp"
 #include "ripc/server.hpp"
 #include "ripc/client.hpp"
@@ -14,7 +15,14 @@
 
 namespace ripc
 {
-
+#define CHECK_INIT                      \
+    {                                   \
+        if (!isInitialized())           \
+        {                               \
+            LOG_ERR("Not initialized"); \
+            return false;               \
+        }                               \
+    }
     // --- Синглтон ---
     RipcEntityManager &RipcEntityManager::getInstance()
     {
@@ -28,20 +36,17 @@ namespace ripc
         std::lock_guard<std::mutex> lock(manager_mutex); // Защищаем весь процесс инициализации
         if (is_initialized)
         {
-            throw std::logic_error("RipcEntityManager already initialized.");
+            // throw std::logic_error("RipcEntityManager already initialized.");
+            LOG_ERR("RipcEntityManager already initialized");
+            return;
         }
-        std::cout << "EntityManager: Initializing..." << std::endl;
+
+        // std::cout << "EntityManager: Initializing..." << std::endl;
+        LOG_INFO("Initializing...");
         context = std::unique_ptr<RipcContext>(new RipcContext());
-        try
-        {
-            context->openDevice(device_path); // Может бросить исключение
-        }
-        catch (...)
-        {
-            context.reset(); // Очистка контекста при ошибке
-            std::cerr << "EntityManager: Context initialization failed." << std::endl;
-            throw;
-        }
+
+        if (!context->openDevice(device_path))
+            return;
 
         // Запуск потока слушателя
         listener_running.store(true);
@@ -54,55 +59,66 @@ namespace ripc
             listener_running.store(false);
             context.reset();        // Закрыть устройство
             is_initialized = false; // Сбросить флаг
-            std::cerr << "EntityManager: Failed to create listener thread." << std::endl;
-            throw std::runtime_error("Failed to create listener thread: " + std::string(e.what()));
+            // std::cerr << "EntityManager: Failed to create listener thread." << std::endl;
+            LOG_CRIT("Failed to create listener thread: %s", e.what());
+            return;
+            // throw std::runtime_error("Failed to create listener thread: " + std::string(e.what()));
         }
 
         is_initialized = true; // Инициализация завершена успешно
-        std::cout << "EntityManager: Initialization complete. Listener thread started." << std::endl;
+        // std::cout << "EntityManager: Initialization complete. Listener thread started." << std::endl;
+        LOG_INFO("Initialization complete. Listener thread started.");
     }
 
     void RipcEntityManager::doShutdown()
     {
-        // 1. Остановить поток (вне блокировки менеджера)
+        // Остановить поток
         if (listener_running.exchange(false))
         { // Потокобезопасно устанавливаем false и проверяем старое значение
             if (listener_thread.joinable())
             {
-                std::cout << "EntityManager: Waiting for listener thread to join..." << std::endl;
+                // std::cout << "EntityManager: Waiting for listener thread to join..." << std::endl;
+                LOG_INFO("Waiting for listener thread to join...");
                 try
                 {
                     listener_thread.join();
-                    std::cout << "EntityManager: Listener thread joined." << std::endl;
+                    // std::cout << "EntityManager: Listener thread joined." << std::endl;
+                    LOG_INFO("Listener thread joined");
                 }
                 catch (const std::system_error &e)
                 {
-                    std::cerr << "EntityManager: Error joining listener thread: " << e.what() << std::endl;
+                    // std::cerr << "EntityManager: Error joining listener thread: " << e.what() << std::endl;
+                    LOG_WARN("Error joining listener thread: %s", e.what());
                 }
             }
         }
 
-        // 2. Блокируем менеджер для очистки остального
+        // Блокируем менеджер для очистки остального
         std::lock_guard<std::mutex> lock(manager_mutex);
-        if (!is_initialized)
-        {
-            return; // Уже не инициализирован
-        }
-        std::cout << "EntityManager: Shutting down..." << std::endl;
+        if (!isInitialized())
+            return;
+
+        LOG_INFO("Shutting down...");
+        // std::cout << "EntityManager: Shutting down..." << std::endl;
 
         // Очистка карт вызовет деструкторы unique_ptr -> деструкторы Server/Client
-        std::cout << "EntityManager: Clearing clients (" << clients.size() << ")..." << std::endl;
+        // std::cout << "EntityManager: Clearing clients (" << clients.size() << ")..." << std::endl;
+        LOG_INFO("Clearing clients (%ld)", clients.size());
         clients.clear();
-        std::cout << "EntityManager: Clearing servers (" << servers.size() << ")..." << std::endl;
+        // std::cout << "EntityManager: Clearing servers (" << servers.size() << ")..." << std::endl;
+        LOG_INFO("Clearing servers (%ld)", servers.size());
         servers.clear();
+
+        LOG_INFO("Clearing notifiction handlers (%ld)", notification_handlers.size());
         notification_handlers.clear();
 
-        // Контекст будет очищен автоматически деструктором unique_ptr context
-        std::cout << "EntityManager: Resetting context..." << std::endl;
-        context.reset(); // Явно вызываем деструктор контекста (закроет fd)
+        // std::cout << "EntityManager: Resetting context" << std::endl;
+        LOG_INFO("Resetting context");
+        context.reset();
 
         is_initialized = false;
-        std::cout << "EntityManager: Shutdown finished." << std::endl;
+        // std::cout << "EntityManager: Shutdown finished." << std::endl;
+        LOG_INFO("Shutdown finished");
     }
 
     RipcContext &RipcEntityManager::getContext()
@@ -110,7 +126,8 @@ namespace ripc
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized || !context)
         {
-            throw std::logic_error("RipcEntityManager or Context not initialized.");
+            // throw std::logic_error("RipcEntityManager or Context not initialized.");
+            LOG_CRIT("RipcEntityManager or Context not initialized");
         }
         return *context;
     }
@@ -119,122 +136,171 @@ namespace ripc
     Server *RipcEntityManager::createServer(const std::string &name)
     {
         if (!is_initialized)
-            throw std::logic_error("Manager not initialized.");
+        {
+            LOG_CRIT("Manager is not initialized");
+            return nullptr;
+        }
+        // throw std::logic_error("Manager not initialized.");
         if (servers.size() >= max_servers)
-            throw std::runtime_error("Server limit reached.");
+        {
+            LOG_ERR("Server limit reached");
+            return nullptr;
+        }
+        // throw std::runtime_error("Server limit reached.");
 
         auto new_server = std::unique_ptr<Server>(new Server(getContext(), name));
-        try
+        if (!new_server->init())
         {
-            new_server->init(); // Выполняет ioctl register
-        }
-        catch (...)
-        {
-            throw; // Перебрасываем исключение, unique_ptr удалит объект
+            new_server.reset();
+            return nullptr;
         }
 
         int new_id = new_server->getId();
         if (!IS_ID_VALID(new_id))
         {
-            // Это не должно произойти, если init() отработал без исключений
-            throw std::logic_error("Server init returned invalid ID after success.");
+            // throw std::logic_error("Server init returned invalid ID after success.");
+
+            // удаляем сервер
+            new_server.reset();
+            LOG_ERR("Server got invalid id");
+            return nullptr;
         }
         // Проверка на коллизию ID (маловероятно, но важно)
         if (servers.count(new_id))
         {
-            throw std::logic_error("Server ID collision detected: " + std::to_string(new_id));
+            // throw std::logic_error("Server ID collision detected: " + std::to_string(new_id));
+            //  удаляем сервер
+            new_server.reset();
+            LOG_ERR("Server ID collision detected: %d", new_id);
+            return nullptr;
         }
 
         Server *raw_ptr = new_server.get();
         // Вставляем в unordered_map, перемещая владение unique_ptr
         std::lock_guard<std::mutex> lock(manager_mutex);
         servers.emplace(new_id, std::move(new_server));
-        std::cout << "EntityManager: Server '" << name << "' (ID: " << new_id << ") created." << std::endl;
+        // std::cout << "EntityManager: Server '" << name << "' (ID: " << new_id << ") created." << std::endl;
+        LOG_INFO("Server '%s' (ID:%d) created", name.c_str(), new_id);
         return raw_ptr;
     }
 
     Client *RipcEntityManager::createClient()
     {
         if (!is_initialized)
-            throw std::logic_error("Manager not initialized.");
+        {
+            LOG_CRIT("Manager not initialized.");
+            return nullptr;
+        }
+        // throw std::logic_error("Manager not initialized.");
         if (clients.size() >= max_clients)
-            throw std::runtime_error("Client limit reached.");
+        {
+            LOG_ERR("Clients limit reached");
+            return nullptr;
+        }
+        // throw std::runtime_error("Client limit reached.");
 
         auto new_client = std::unique_ptr<Client>(new Client(getContext()));
-        try
+        if (!new_client->init())
         {
-            new_client->init(); // Выполняет ioctl register
-        }
-        catch (...)
-        {
-            throw;
+            new_client.reset();
+            return nullptr;
         }
 
         int new_id = new_client->getId();
         if (!IS_ID_VALID(new_id))
         {
-            throw std::logic_error("Client init returned invalid ID after success.");
+            // Это не должно произойти, если init() отработал без исключений
+            // удаляем сервер
+            new_client.reset();
+            LOG_ERR("Client got invalid id");
+            return nullptr;
+            // throw std::logic_error("Client init returned invalid ID after success.");
         }
         if (clients.count(new_id))
         {
-            // TODO: Отмена регистрации клиента при коллизии?
-            throw std::logic_error("Client ID collision detected: " + std::to_string(new_id));
+            // throw std::logic_error("Client ID collision detected: " + std::to_string(new_id));
+            new_client.reset();
+            LOG_ERR("Client ID collision detected: %d", new_id);
+            return nullptr;
         }
 
         Client *raw_ptr = new_client.get();
         std::lock_guard<std::mutex> lock(manager_mutex);
         clients.emplace(new_id, std::move(new_client));
-        std::cout << "EntityManager: Client (ID: " << new_id << ") created." << std::endl;
+        // std::cout << "EntityManager: Client (ID: " << new_id << ") created." << std::endl;
+        LOG_INFO("Client (ID: %d) created.", new_id);
         return raw_ptr;
     }
 
     bool RipcEntityManager::deleteServer(int server_id)
     {
         if (!IS_ID_VALID(server_id))
+        {
+            LOG_ERR("Server got invalid id");
             return false;
+        }
         std::lock_guard<std::mutex> lock(manager_mutex);
+
         if (!is_initialized)
+        {
+            LOG_CRIT("Manager not initialized");
             return false;
+        }
 
         size_t removed_count = servers.erase(server_id);
 
         if (removed_count > 0)
         {
-            std::cout << "EntityManager: Server ID " << server_id << " deleted." << std::endl;
+            LOG_INFO("Server ID %d deleted", server_id);
+            // std::cout << "EntityManager: Server ID " << server_id << " deleted." << std::endl;
             return true;
         }
         else
         {
-            std::cerr << "EntityManager: Server ID " << server_id << " not found for deletion." << std::endl; // Можно не выводить
+            LOG_ERR("Server ID %d not found", server_id);
+            // std::cerr << "EntityManager: Server ID " << server_id << " not found for deletion." << std::endl;
             return false;
         }
+        return false;
     }
 
     bool RipcEntityManager::deleteServer(Server *server)
     {
         if (!server)
+        {
+            LOG_ERR("Nullptr passed as server ptr");
             return false;
+        }
         return deleteServer(server->m_server_id);
     }
 
     bool RipcEntityManager::deleteClient(int client_id)
     {
         if (!IS_ID_VALID(client_id))
+        {
+            LOG_ERR("Client got invalid id");
             return false;
+        }
+
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized)
+        {
+            LOG_CRIT("Manager not initialized");
             return false;
+        }
 
         size_t removed_count = clients.erase(client_id);
 
         if (removed_count > 0)
         {
-            std::cout << "EntityManager: Client ID " << client_id << " deleted." << std::endl;
+            // std::cout << "EntityManager: Client ID " << client_id << " deleted." << std::endl;
+            LOG_INFO("Client ID %d deleted", client_id);
             return true;
         }
         else
         {
-            std::cerr << "EntityManager: Client ID " << client_id << " not found for deletion." << std::endl;
+            // std::cerr << "EntityManager: Client ID " << client_id << " not found for deletion." << std::endl;
+            LOG_ERR("Client ID %d not found", client_id);
             return false;
         }
     }
@@ -242,7 +308,10 @@ namespace ripc
     bool RipcEntityManager::deleteClient(Client *client)
     {
         if (!client)
+        {
+            LOG_ERR("Nullptr passed as client ptr");
             return false;
+        }
         return deleteClient(client->m_client_id);
     }
 
@@ -250,11 +319,17 @@ namespace ripc
     Server *RipcEntityManager::findServerById(int server_id)
     {
         if (!IS_ID_VALID(server_id))
+        {
+            LOG_ERR("Server got invalid id");
             return nullptr;
-        // Блокировка нужна для безопасного доступа к карте
+        }
+
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized)
+        {
+            LOG_CRIT("Manager not initialized");
             return nullptr;
+        }
 
         auto it = servers.find(server_id);
         return (it != servers.end()) ? it->second.get() : nullptr;
@@ -263,46 +338,61 @@ namespace ripc
     Client *RipcEntityManager::findClientById(int client_id)
     {
         if (!IS_ID_VALID(client_id))
+        {
+            LOG_ERR("Client got invalid id");
             return nullptr;
+        }
+
         std::lock_guard<std::mutex> lock(manager_mutex);
         if (!is_initialized)
+        {
+            LOG_CRIT("Manager not initialized");
             return nullptr;
+        }
 
         auto it = clients.find(client_id);
         return (it != clients.end()) ? it->second.get() : nullptr;
     }
 
     // --- Поток и Диспетчеризация ---
-    void RipcEntityManager::registerHandler(enum notif_type type, NotificationHandler handler)
+    bool RipcEntityManager::registerHandler(enum notif_type type, NotificationHandler handler)
     {
         if (!IS_NTF_TYPE_VALID(type))
         {
-            throw std::invalid_argument("Invalid notification type for handler registration.");
+            // throw std::invalid_argument("Invalid notification type for handler registration.");
+            LOG_ERR("Invalid notification type for handler registration");
+            return false;
         }
         std::lock_guard<std::mutex> lock(manager_mutex);
-        if (handler)
+        if (!handler)
         {
-            notification_handlers[type] = std::move(handler);
-            std::cout << "EntityManager: Registered custom handler for type " << type << "." << std::endl;
+            LOG_WARN("Unregistering handler");
+            notification_handlers.erase(type);
         }
         else
         {
-            notification_handlers.erase(type);
-            std::cout << "EntityManager: Unregistered custom handler for type " << type << "." << std::endl;
+            notification_handlers[type] = std::move(handler);
+            // std::cout << "EntityManager: Registered custom handler for type " << type << "." << std::endl;
+            LOG_INFO("Registered handler for type: %d ", type);
         }
+        return true;
     }
 
     void RipcEntityManager::dispatchNotification(const notification_data &ntf)
     {
         // Базовые проверки валидности
-        if (!IS_NTF_TYPE_VALID(ntf.m_type) || !IS_NTF_SEND_VALID(ntf.m_who_sends) || !IS_ID_VALID(ntf.m_reciver_id))
+        // if (!IS_NTF_TYPE_VALID(ntf.m_type) || !IS_NTF_SEND_VALID(ntf.m_who_sends) || !IS_ID_VALID(ntf.m_reciver_id))
+        if (!IS_NTF_DATA_VALID(ntf))
         {
-            std::cerr << "Dispatcher: Invalid notification received (type=" << ntf.m_type
-                      << ", sender=" << ntf.m_who_sends << ", receiver=" << ntf.m_reciver_id << ")" << std::endl;
+            LOG_ERR("Dispatcher: Invalid notification received (type=%d, sender=%d, receiver=%d)",
+                    ntf.m_type, ntf.m_who_sends, ntf.m_reciver_id);
+
+            // std::cerr << "Dispatcher: Invalid notification received (type=" << ntf.m_type
+            //           << ", sender=" << ntf.m_who_sends << ", receiver=" << ntf.m_reciver_id << ")" << std::endl;
             return;
         }
 
-        NotificationHandler custom_handler = nullptr;
+        // NotificationHandler custom_handler = nullptr;
         Server *target_server = nullptr;
         Client *target_client = nullptr;
         enum notif_type current_type = static_cast<enum notif_type>(ntf.m_type);
@@ -310,81 +400,117 @@ namespace ripc
 
         {
             std::lock_guard<std::mutex> lock(manager_mutex);
+
             if (!is_initialized)
-                return; // Проверка под блокировкой
+            {
+                LOG_CRIT("Manager not initialized");
+                return;
+            }
 
             // Ищем пользовательский обработчик
             auto it_handler = notification_handlers.find(current_type);
             if (it_handler != notification_handlers.end())
             {
-                custom_handler = it_handler->second;
+                LOG_INFO("Found a custom handler");
+                it_handler->second(ntf);
+                return;
             }
 
             // Если нет, ищем целевой объект (используем find под той же блокировкой)
-            if (!custom_handler)
+            // if (!custom_handler)
+            //{
+            // К серверу
+            if (ntf.m_who_sends == CLIENT)
             {
-                if (ntf.m_who_sends == CLIENT)
-                { // К серверу
-                    std::cout << "RipcEntityManager::dispatchNotification: send notification to server\n";
-                    auto it_srv = servers.find(receiver_id);
-                    if (it_srv != servers.end())
-                        target_server = it_srv->second.get();
-                }
-                else if (ntf.m_who_sends == SERVER)
-                { // К клиенту
-                    std::cout << "RipcEntityManager::dispatchNotification: send notification to client\n";
-                    auto it_cli = clients.find(receiver_id);
-                    if (it_cli != clients.end())
-                        target_client = it_cli->second.get();
+                // std::cout << "RipcEntityManager::dispatchNotification: send notification to server\n";
+                LOG_INFO("received notification from client");
+                auto it_srv = servers.find(receiver_id);
+                if (it_srv != servers.end())
+                {
+                    LOG_INFO("Found server's handler");
+                    it_srv->second->handleNotification(ntf);
+                    return;
                 }
             }
-        }
-
-        // Вызов обработчика/метода объекта вне блокировки
-        try
-        {
-            if (custom_handler)
+            // К клиенту
+            else if (ntf.m_who_sends == SERVER)
             {
-                custom_handler(ntf);
-            }
-            else if (target_server)
-            {
-                target_server->handleNotification(ntf);
-            }
-            else if (target_client)
-            {
-                target_client->handleNotification(ntf);
+                // std::cout << "RipcEntityManager::dispatchNotification: send notification to client\n";
+                LOG_INFO("received notification from server");
+                auto it_cli = clients.find(receiver_id);
+                if (it_cli != clients.end())
+                {
+                    LOG_INFO("Found client's handler");
+                    it_cli->second->handleNotification(ntf);
+                    return;
+                }
             }
             else
-            {
-                // Объект не найден, и нет пользовательского обработчика
-                std::cout << "Dispatcher: No handler or target instance found for notification type "
-                          << ntf.m_type << " to receiver " << receiver_id << std::endl;
-            }
+                LOG_ERR("Unknown sender type: %d", ntf.m_who_sends);
+            LOG_ERR("Handler was not found for type: %d", ntf.m_type);
+            //}
         }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Dispatcher: Exception during notification handling: " << e.what() << std::endl;
-        }
-        catch (...)
-        {
-            std::cerr << "Dispatcher: Unknown exception during notification handling." << std::endl;
-        }
+
+        // // Вызов обработчика/метода объекта вне блокировки
+        // try
+        // {
+        //     if (custom_handler)
+        //     {
+        //         custom_handler(ntf);
+        //     }
+        //     else if (target_server)
+        //     {
+        //         target_server->handleNotification(ntf);
+        //     }
+        //     else if (target_client)
+        //     {
+        //         target_client->handleNotification(ntf);
+        //     }
+        //     else
+        //     {
+        //         // Объект не найден, и нет пользовательского обработчика
+        //         std::cout << "Dispatcher: No handler or target instance found for notification type "
+        //                   << ntf.m_type << " to receiver " << receiver_id << std::endl;
+        //     }
+        // }
+        // catch (const std::exception &e)
+        // {
+        //     std::cerr << "Dispatcher: Exception during notification handling: " << e.what() << std::endl;
+        // }
+        // catch (...)
+        // {
+        //     std::cerr << "Dispatcher: Unknown exception during notification handling." << std::endl;
+        // }
+    }
+
+    bool RipcEntityManager::isInitialized() const
+    {
+        return is_initialized;
     }
 
     void RipcEntityManager::notificationListenerLoop()
     {
-        std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Started." << std::endl;
+        LOG_INFO("[Listener Thread %d]: Started", std::this_thread::get_id());
+        // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Started." << std::endl;
         int local_fd = -1;
 
         try
         {
-            // Получаем fd один раз (getContext безопасно читает под мьютексом)
             local_fd = getContext().getFd();
         }
         catch (const std::exception &e)
         {
-            std::cerr << "[Listener Thread]: Failed to get device fd: " << e.what() << ". Stopping." << std::endl;
+            // std::cerr << "[Listener Thread]: Failed to get device fd: " << e.what() << ". Stopping." << std::endl;
+            LOG_CRIT("[Listener Thread %d]: Failed to get device fd: %s. Stopping",
+                     std::this_thread::get_id(), e.what());
+            listener_running.store(false);
+            return;
+        }
+        if (local_fd < 0)
+        {
+            LOG_CRIT("[Listener Thread %d]: Failed to get device fd. Stopping",
+                     std::this_thread::get_id());
+            // std::cerr << "[Listener Thread]: Failed to get device fd: " << << ". Stopping." << std::endl;
             listener_running.store(false);
             return;
         }
@@ -405,7 +531,9 @@ namespace ripc
             { // Ошибка poll
                 if (errno == EINTR)
                     continue;
-                perror("[Listener Thread]: poll failed");
+                LOG_CRIT("[Listener Thread %d]: poll failed Stopping: %s",
+                         std::this_thread::get_id(), strerror(errno));
+                // perror("[Listener Thread]: poll failed");
                 listener_running.store(false); // Ошибка, останавливаем поток
                 break;
             }
@@ -417,8 +545,10 @@ namespace ripc
             // Есть событие (ret > 0)
             if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
             {
-                std::cerr << "[Listener Thread]: Error/Hangup/Invalid event on fd (revents: 0x"
-                          << std::hex << pfd.revents << std::dec << "). Stopping." << std::endl;
+                LOG_CRIT("[Listener Thread %d]: Error/Hangup/Invalid event on fd (revents: 0x%x). Stopping",
+                         std::this_thread::get_id(), pfd.revents)
+                // std::cerr << "[Listener Thread]: Error/Hangup/Invalid event on fd (revents: 0x"
+                //           << std::hex << pfd.revents << std::dec << "). Stopping." << std::endl;
                 listener_running.store(false);
                 break;
             }
@@ -450,22 +580,27 @@ namespace ripc
                         }
                         else
                         {
-                            // Ошибка чтения, логируем, но не останавливаем поток
-                            perror("[Listener Thread]: read failed");
+                            // Ошибка чтения, закончились данные для чтения
+                            // perror("[Listener Thread]: read failed");
                             break; // Выходим из цикла чтения
                         }
                     }
                     else
                     { // bytes_read == 0 (EOF?) или прочитано меньше, чем ожидалось
-                        std::cerr << "[Listener Thread]: Unexpected read result (" << bytes_read
-                                  << ", expected " << sizeof(ntf) << "). Stopping read loop." << std::endl;
-                        // Можно попытаться прочитать остаток или просто выйти из цикла read
+                        LOG_WARN("[Listener Thread %d]: Unexpected read result %d, expected %d",
+                                 std::this_thread::get_id(), bytes_read, sizeof(ntf));
+                        // std::cerr << "[Listener Thread]: Unexpected read result (" << bytes_read
+                        //           << ", expected " << sizeof(ntf) << "). Stopping read loop." << std::endl;
+                        //  Можно попытаться прочитать остаток или просто выйти из цикла read
                         break;
                     }
                 } // end read loop
             } // end if POLLIN
         } // end while(listener_running)
 
-        std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Exiting." << std::endl;
+        // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Exiting." << std::endl;
+        LOG_INFO("[Listener Thread %d]: stopped",
+                 std::this_thread::get_id());
     }
+
 } // namespace ripc

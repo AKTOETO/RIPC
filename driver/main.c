@@ -624,7 +624,7 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
     // если получить не удалось
     if (!notif)
     {
-        ERR("Error while fetching notification");
+        INF("Error while fetching notification");
         return -ENOENT;
     }
     size = sizeof(notif->data);

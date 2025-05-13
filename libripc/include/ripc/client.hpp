@@ -44,30 +44,30 @@ namespace ripc
         explicit Client(RipcContext &ctx);
 
         // Приватный метод инициализации (выполняет ioctl register)
-        void init();
+        bool init();
 
         // Приватный метод для проверки состояния
-        void checkInitialized() const;
-        void checkMapped() const;
+        //bool checkInitialized() const;
+        //bool checkMapped() const;
 
         // Запрет копирования/присваивания
         Client(const Client &) = delete;
         Client &operator=(const Client &) = delete;
 
         // --- Обработка уведомлений ---
-        void handleNotification(const notification_data &ntf);
-        void dispatchNewMessage(const notification_data &ntf);
-        void dispatchRemoteDisconnect(const notification_data &ntf);
+        bool handleNotification(const notification_data &ntf);
+        bool dispatchNewMessage(const notification_data &ntf);
+        bool dispatchRemoteDisconnect(const notification_data &ntf);
 
     public:
         ~Client();
 
         /// @brief Подключение к серверу
         /// @param server_name имя сервера
-        void connect(const std::string &server_name);
+        bool connect(const std::string &server_name);
 
         /// @brief отключение от сервера
-        void disconnect();
+        bool disconnect();
 
         /// @brief Отправка запроса на сервер
         /// @param url URL запроса

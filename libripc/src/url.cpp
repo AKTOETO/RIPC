@@ -1,3 +1,4 @@
+#include "ripc/logger.hpp"
 #include "ripc/url.hpp"
 #include <stdexcept>
 #include <algorithm>
@@ -44,7 +45,7 @@ namespace ripc
     {
         subdivide();
     }
-    
+
     UrlPattern::UrlPattern(const std::string &pattern)
         : IUrl<TokenType::UrlPattern::Type>(pattern)
     {
@@ -78,7 +79,8 @@ namespace ripc
             }
             else
             {
-                throw std::invalid_argument("UrlPattern::processToken: Unknown dynamic token type '" + tok + "'");
+                // throw std::invalid_argument("UrlPattern::processToken: Unknown dynamic token type '" + tok + "'");
+                LOG_ERR("Unknown dynamic token type '%s'", tok.c_str());
             }
         }
         // иначе это статическй токен
@@ -97,8 +99,8 @@ namespace ripc
     //--- Сравнение паттерна с url ---
     bool operator==(const Url &url, const UrlPattern &pattern)
     {
-        std::cout << "\toperator==: Compairing url '" << url
-                  << "' with pattern '" << pattern << "'\n";
+        //std::cout << "\toperator==: Compairing url '" << url
+        //          << "' with pattern '" << pattern << "'\n";
 
         // получаем массивы токенов
         const auto &url_tokens = url.getTokens();         // TokenType::Url::Type (<string, int>)
@@ -108,7 +110,7 @@ namespace ripc
         if (url_tokens.size() != pattern_tokens.size())
             return false;
 
-        std::cout << "\toperator==: token size in url: " << url.m_pattern.size() << std::endl;
+        //std::cout << "\toperator==: token size in url: " << url.m_pattern.size() << std::endl;
 
         // попарно сравниваем токены
         for (size_t i = 0; i < url_tokens.size(); i++)

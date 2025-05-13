@@ -43,6 +43,7 @@ namespace ripc
         {
             int client_id = -1;
             const std::pair<const int, std::shared_ptr<Memory>> &m_sub_mem_p;
+            static const std::pair<const int, std::shared_ptr<Memory>> m_null_submem;
             bool active = false;
             ConnectionInfo(int client_id, const std::pair<const int, std::shared_ptr<Memory>> &sub_mem)
                 : client_id(client_id), m_sub_mem_p(sub_mem), active(true)
@@ -51,9 +52,9 @@ namespace ripc
         };
 
         // список соединений
-        std::vector<std::shared_ptr<ConnectionInfo>> m_connections; // std::vector<ServerConnectionInfo> connections;
+        std::vector<std::shared_ptr<ConnectionInfo>> m_connections;
         // список общих памятей
-        std::unordered_map<int, std::shared_ptr<Memory>> m_mappings; // std::vector<ServerShmMapping> mappings;
+        std::unordered_map<int, std::shared_ptr<Memory>> m_mappings;
 
         // список колбеков на url определенные
         std::map<UrlPattern, UrlCallbackFull> m_urls;
@@ -62,28 +63,28 @@ namespace ripc
         Server(RipcContext &ctx, const std::string &server_name);
 
         // Приватный метод инициализации (ioctl register)
-        void init();
+        bool init();
 
         // Приватные хелперы для управления соединениями/маппингами
-        void addConnection(int client_id, int shm_id);
+        bool addConnection(int client_id, int shm_id);
         std::shared_ptr<Server::ConnectionInfo> findConnection(int client_id) const;
         const std::pair<const int, std::shared_ptr<Memory>> &findOrCreateSHM(int shm_id);
 
         // Приватный метод для проверки состояния
-        void checkInitialized() const;
+        //void checkInitialized() const;
 
         // Запрет копирования/присваивания
         Server(const Server &) = delete;
         Server &operator=(const Server &) = delete;
 
-        void writeToClient(std::shared_ptr<ConnectionInfo> con, WriteBufferView &result);
+        bool writeToClient(std::shared_ptr<ConnectionInfo> con, WriteBufferView &result);
 
         // --- Обработка уведомлений ---
-        void handleNotification(const notification_data &ntf);
-        void dispatchNewMessage(const notification_data &ntf);
+        bool handleNotification(const notification_data &ntf);
+        bool dispatchNewMessage(const notification_data &ntf);
 
         // отключение клиента
-        void disconnectFromClient(std::shared_ptr<ConnectionInfo> con);
+        bool disconnectFromClient(std::shared_ptr<ConnectionInfo> con);
 
     public:
         ~Server();

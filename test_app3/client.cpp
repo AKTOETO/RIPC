@@ -2,13 +2,15 @@
 
 int main()
 {
+    //ripc::setLogLevel(ripc::LogLevel::WARNING);
+    //ripc::setCriticalLogBehavior(ripc::Logger::CriticalBehavior::LOG_ONLY);
     ripc::initialize();
 
     auto *cli = ripc::createClient();
     cli->connect("hello");
 
     cli->call(
-        "alo/da",
+        "alo/da/123",
         [](ripc::ReadBufferView &rb)
         {
             auto data = rb.getPayload();

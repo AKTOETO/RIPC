@@ -1,3 +1,4 @@
+#include "ripc/logger.hpp"
 #include "ripc/context.hpp"
 #include <unistd.h> // close, sysconf
 #include <fcntl.h>  // open flags
@@ -8,29 +9,46 @@
 
 namespace ripc
 {
+#define CHECK_INIT                      \
+    {                                   \
+        if (!isInitialized())           \
+        {                               \
+            LOG_ERR("Not initialized"); \
+            return false;               \
+        }                               \
+    }
+
+    RipcContext::RipcContext()
+        : device_fd(-1), page_size(-1), initialized(false)
+    {
+    }
 
     // Вызывается менеджером
-    void RipcContext::openDevice(const std::string &path)
+    bool RipcContext::openDevice(const std::string &path)
     {
         if (initialized)
         {
-            throw std::logic_error("Context: Device already opened.");
+            // throw std::logic_error("Context: Device already opened.");
+            LOG_WARN("Reopening device");
         }
+
         device_path = path;
-        // O_NONBLOCK важен для poll/read в потоке менеджера
         device_fd = ::open(device_path.c_str(), O_RDWR | O_NONBLOCK);
         if (device_fd < 0)
         {
             int err_code = errno;
             initialized = false; // Убедимся, что флаг сброшен
-            throw std::runtime_error("Context: Failed to open device '" + device_path + "': " + strerror(err_code));
+            // throw std::runtime_error("Context: Failed to open device '" + device_path + "': " + strerror(err_code));
+            LOG_CRIT("Failed to open device '%s': %s", device_path.c_str(), strerror(errno));
+            return false;
         }
         initialized = true; // Успешно открыли
-        std::cout << "Context: Device '" << device_path << "' opened (fd=" << device_fd << ")" << std::endl;
-        determinePageSize(); // Определяем размер страницы после успешного открытия
+        // std::cout << "Context: Device '" << device_path << "' opened (fd=" << device_fd << ")" << std::endl;
+        LOG_INFO("Device '%s' opened (fd=%d)", device_path.c_str(), device_fd);
+        return determinePageSize(); // Определяем размер страницы после успешного открытия
     }
 
-    void RipcContext::closeDevice()
+    bool RipcContext::closeDevice()
     {
         if (device_fd >= 0)
         {
@@ -40,38 +58,46 @@ namespace ripc
             if (::close(current_fd) != 0)
             {
                 // Не бросаем исключение из деструктора/closeDevice, просто логируем
-                perror(("Context: Failed to close device fd " + std::to_string(current_fd)).c_str());
+                LOG_ERR("Failed to close device fd %d: %s", current_fd, strerror(errno));
+                // perror(("Context: Failed to close device fd " + std::to_string(current_fd)).c_str());
+                return false;
             }
             else
             {
-                std::cout << "Context: Device closed (fd=" << current_fd << ")" << std::endl;
+                // std::cout << "Context: Device closed (fd=" << current_fd << ")" << std::endl;
+                LOG_INFO("Device closed (fd=%d)", current_fd);
             }
         }
-        initialized = false; // Сбрасываем в любом случае
+        initialized = false;
+        return true;
     }
 
-    void RipcContext::determinePageSize()
+    bool RipcContext::determinePageSize()
     {
-        errno = 0; // Сброс перед sysconf
+        errno = 0;
         long result = sysconf(_SC_PAGE_SIZE);
         if (result < 0)
         {
             if (errno != 0)
             {
-                perror("Context: sysconf(_SC_PAGE_SIZE) failed");
+                // perror("Context: sysconf(_SC_PAGE_SIZE) failed");
+                LOG_WARN("sysconf(_SC_PAGE_SIZE) failed: %s", strerror(errno));
             }
-            else
-            {
-                std::cerr << "Context: sysconf(_SC_PAGE_SIZE) returned negative value without setting errno." << std::endl;
-            }
+            // else
+            //{
+            //     std::cerr << "Context: sysconf(_SC_PAGE_SIZE) returned negative value without setting errno." << std::endl;
+            // }
             page_size = 4096; // Используем значение по умолчанию
-            std::cerr << "Context: Using default page size: " << page_size << std::endl;
+            LOG_WARN("Using default page size: %d", page_size);
+            // std::cerr << "Context: Using default page size: " << page_size << std::endl;
         }
         else
         {
             page_size = result;
-            std::cout << "Context: Determined page size: " << page_size << std::endl;
+            // std::cout << "Context: Determined page size: " << page_size << std::endl;
+            LOG_INFO("Determined page size: %d", page_size);
         }
+        return true;
     }
 
     // Деструктор
@@ -83,18 +109,21 @@ namespace ripc
     // Методы доступа
     int RipcContext::getFd() const
     {
-        if (!initialized || device_fd < 0)
+        CHECK_INIT;
+        if (device_fd < 0)
         {
-            throw std::logic_error("Context: Device not open or context not initialized.");
+            // throw std::logic_error("Context: Device not open or context not initialized.");
+            LOG_ERR("Device in not open (fd: %d)", device_fd);
         }
         return device_fd;
     }
 
     long RipcContext::getPageSize() const
     {
-        if (!initialized)
+        CHECK_INIT;
+        if (page_size == -1)
         {
-            throw std::logic_error("Context: Page size not determined or context not initialized.");
+            LOG_ERR("Page size is not set");
         }
         return page_size;
     }

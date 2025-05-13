@@ -70,6 +70,9 @@ namespace ripc
         // Диспетчеризация полученных уведомлений
         void dispatchNotification(const notification_data &ntf);
 
+        // проверка инициализации
+        bool isInitialized() const;
+
     public:
         // --- Доступ к синглтону ---
 
@@ -172,7 +175,7 @@ namespace ripc
          * @param handler Функция-обработчик (или лямбда).
          * @throws std::invalid_argument если тип уведомления некорректен.
          */
-        void registerHandler(enum notif_type type, NotificationHandler handler);
+        bool registerHandler(enum notif_type type, NotificationHandler handler);
     };
 
 } // namespace ripc

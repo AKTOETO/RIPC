@@ -7,9 +7,14 @@ int main()
     // создадим клиент и сервер и подключимся клиентом к серверу
     auto *srv = ripc::createServer("hello");
     srv->registerCallback(
-        "alo/da",
+        "alo/<string>/<int>",
         [](const ripc::Url &url, ripc::ReadBufferView &rb)
         {
+            std::cout<<"SERVER> new url request: " << url << std::endl;
+            auto& tokens = url.getTokens();
+            std::cout<<"SERVER> string token: " << std::get<std::string>(tokens[1]) << std::endl;
+            std::cout<<"SERVER> int token: " << std::get<int>(tokens[2]) << std::endl;
+
             auto header = rb.getHeader();
             if (!header)
                 std::cout << "SERVER> there is no additional headers\n";
