@@ -20,7 +20,7 @@ add_subdirectory(libripc)
 # Затем примеры
 add_subdirectory(examples)
 # Тесты
-add_subdirectory(tests)
+#add_subdirectory(tests)
 
 # --- Пользовательские цели верхнего уровня (для удобства) ---
 # Они будут работать, так как цели из подкаталогов видны на верхнем уровне

@@ -6,6 +6,7 @@
 #ifdef __KERNEL__
 // --- Код для Ядра Linux ---
 #include <linux/types.h> // Определяет u16, u32
+#include <linux/errno.h>
 #include "err.h"
 #else
 // --- Код для Пользовательского пространства ---

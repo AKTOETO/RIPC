@@ -1,46 +1,43 @@
-#include "ripc/logger.hpp"
 #include "ripc/server.hpp"
-#include "ripc/context.hpp"
-#include "ripc.h"
 #include "id_pack.h"
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
+#include "ripc.h"
+#include "ripc/context.hpp"
+#include "ripc/logger.hpp"
+#include <algorithm> // std::find_if
 #include <cstring>
-#include <stdexcept>
-#include <system_error>
-#include <sstream>
 #include <iomanip>
 #include <iostream>
-#include <algorithm> // std::find_if
+#include <sstream>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <tuple>
+#include <unistd.h>
 
 namespace ripc
 {
     // нулевая память
     const std::pair<const int, std::shared_ptr<Memory>> Server::ConnectionInfo::m_null_submem{-1, nullptr};
 
-#define CHECK_INIT                      \
-    {                                   \
-        if (!isInitialized())           \
-        {                               \
-            LOG_ERR("Not initialized"); \
-            return false;               \
-        }                               \
+#define CHECK_INIT                                                                                                     \
+    {                                                                                                                  \
+        if (!isInitialized())                                                                                          \
+        {                                                                                                              \
+            LOG_ERR("Not initialized");                                                                                \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
-#define CHECK_INIT_R(val)               \
-    {                                   \
-        if (!isInitialized())           \
-        {                               \
-            LOG_ERR("Not initialized"); \
-            return val;                 \
-        }                               \
+#define CHECK_INIT_R(val)                                                                                              \
+    {                                                                                                                  \
+        if (!isInitialized())                                                                                          \
+        {                                                                                                              \
+            LOG_ERR("Not initialized");                                                                                \
+            return val;                                                                                                \
+        }                                                                                                              \
     }
 
     // Приватный конструктор
     Server::Server(RipcContext &ctx, const std::string &server_name)
-        : m_context(ctx), m_name(server_name), m_server_id(-1),
-          m_connections{}, m_initialized(false),
+        : m_context(ctx), m_name(server_name), m_server_id(-1), m_connections{}, m_initialized(false),
           m_mappings(DEFAULTS::MAX_SERVERS_MAPPING)
     {
         m_connections.reserve(DEFAULTS::MAX_SERVERS_CONNECTIONS);
@@ -59,7 +56,8 @@ namespace ripc
     {
         if (m_initialized)
             return true;
-        // std::cout << "Server '" << m_name << "': init() called by EntityManager." << std::endl;
+        // std::cout << "Server '" << m_name << "': init() called by EntityManager."
+        // << std::endl;
         LOG_INFO("Server '%s': init() called by EntityManager", m_name.c_str());
 
         server_registration reg_data;
@@ -70,7 +68,8 @@ namespace ripc
         if (ioctl(m_context.getFd(), IOCTL_REGISTER_SERVER, &reg_data) < 0)
         {
             int err_code = errno;
-            // throw std::runtime_error("Server init failed: IOCTL_REGISTER_SERVER for '" +
+            // throw std::runtime_error("Server init failed: IOCTL_REGISTER_SERVER for
+            // '" +
             //                          m_name + "': " + strerror(err_code));
             LOG_CRIT("failed: IOCTL_REGISTER_SERVER for '%s': %s ", m_name.c_str(), strerror(err_code));
             return false;
@@ -79,13 +78,15 @@ namespace ripc
         {
             LOG_CRIT("failed: returned invalid server_id = %d", reg_data.server_id);
             return false;
-            // throw std::runtime_error("Server init failed: Kernel returned invalid server_id: " +
+            // throw std::runtime_error("Server init failed: Kernel returned invalid
+            // server_id: " +
             //                          std::to_string(reg_data.server_id));
         }
 
         this->m_server_id = reg_data.server_id;
         m_initialized = true;
-        // std::cout << "Server '" << m_name << "' initialized with ID " << m_server_id << "." << std::endl;
+        // std::cout << "Server '" << m_name << "' initialized with ID " <<
+        // m_server_id << "." << std::endl;
         LOG_INFO("Server '%s' initialized with ID %d", m_name.c_str(), m_server_id);
         return true;
     }
@@ -93,7 +94,8 @@ namespace ripc
     // Деструктор
     Server::~Server()
     {
-        // std::cout << "Server '" << m_name << "' (ID: " << m_server_id << ") destructing..." << std::endl;
+        // std::cout << "Server '" << m_name << "' (ID: " << m_server_id << ")
+        // destructing..." << std::endl;
         LOG_INFO("Server '%s' (ID: %d) destructing...", m_name.c_str(), m_server_id);
 
         // отменяем регистрацию сущности в драйвере
@@ -111,25 +113,36 @@ namespace ripc
     //{
     //    if (!m_initialized)
     //        throw std::logic_error("Server '" + m_name + "' (ID: " +
-    //                               std::to_string(m_server_id) + ") is not initialized.");
+    //                               std::to_string(m_server_id) + ") is not
+    //                               initialized.");
     //}
 
     // --- Публичные методы ---
-    int Server::getId() const { return m_server_id; }
-    const std::string &Server::getName() const { return m_name; }
-    bool Server::isInitialized() const { return m_initialized; }
+    int Server::getId() const
+    {
+        return m_server_id;
+    }
+    const std::string &Server::getName() const
+    {
+        return m_name;
+    }
+    bool Server::isInitialized() const
+    {
+        return m_initialized;
+    }
 
     bool Server::writeToClient(std::shared_ptr<ConnectionInfo> con, WriteBufferView &result)
     {
         LOG_INFO("sending answer to client");
-        // std::cout << "Server::WriteToClient: sending answer to client" << std::endl;
-        // checkInitialized();
+        // std::cout << "Server::WriteToClient: sending answer to client" <<
+        // std::endl; checkInitialized();
         CHECK_INIT;
         if (!con)
         {
             LOG_ERR("empty connection ptr");
             return false;
-            // throw std::invalid_argument("Server::writeToClient: empty connection ptr");
+            // throw std::invalid_argument("Server::writeToClient: empty connection
+            // ptr");
         }
 
         // память, куда будем писать
@@ -148,7 +161,8 @@ namespace ripc
         // throw std::runtime_error("Server::writeToClient: mem is not mapped");
 
         // пишем в память данные
-        // size_t write_len = mem.second->write(0, result.data(), result.getCurrentSize());
+        // size_t write_len = mem.second->write(0, result.data(),
+        // result.getCurrentSize());
 
         // отправляем уведомление
         u32 packed_id = pack_ids(m_server_id, mem.first);
@@ -159,14 +173,16 @@ namespace ripc
                 LOG_ERR("Server '%s' IOCTL_SERVER_END_WRITING failed for shm_id %d", m_name.c_str(), mem.first);
                 return false;
                 // perror(("Server " + std::to_string(m_server_id) +
-                //         ": Warning - IOCTL_SERVER_END_WRITING failed for shm_id " + std::to_string(mem.first))
+                //         ": Warning - IOCTL_SERVER_END_WRITING failed for shm_id " +
+                //         std::to_string(mem.first))
                 //            .c_str());
             }
         }
         else
         {
             LOG_ERR("Failed to pack id");
-            // std::cerr << "Server " << m_server_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
+            // std::cerr << "Server " << m_server_id << ": Warning - Failed to pack ID
+            // for end writing notification." << std::endl;
         }
         return true;
     }
@@ -209,8 +225,9 @@ namespace ripc
             { // Показываем только использованные слоты
                 map_slot_used = true;
                 oss << "    Slot " << i++ << ": SHM ID: " << std::left << std::setw(5) << id
-                    << " -> Addr: " << std::left << std::setw(14) << (submem->m_is_mapped ? submem->m_addr : (void *)-1L)
-                    << " Size: " << std::left << std::setw(6) << (submem->m_is_mapped ? submem->m_max_size : 0)
+                    << " -> Addr: " << std::left << std::setw(14)
+                    << (submem->m_is_mapped ? submem->m_addr : (void *)-1L) << " Size: " << std::left << std::setw(6)
+                    << (submem->m_is_mapped ? submem->m_max_size : 0)
                     << " Mapped: " << (submem->m_is_mapped ? "Yes" : "No ") << "\n";
                 if (submem->m_is_mapped)
                     mapped_count++;
@@ -228,24 +245,29 @@ namespace ripc
         auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(callback));
 
         if (inserted)
-            // std::cout << "Server::registerCallback: callback to '" << it->first << "' registered\n";
+            // std::cout << "Server::registerCallback: callback to '" << it->first << "'
+            // registered\n";
             LOG_INFO("callback to '%s' registered", it->first.getUrl().c_str())
 
         else
-            // std::cout << "Server::registerCallback: callback to '" << it->first << "' NOT registered\n";
+            // std::cout << "Server::registerCallback: callback to '" << it->first << "'
+            // NOT registered\n";
             LOG_WARN("callback to '%s' registered", it->first.getUrl().c_str())
-        return inserted; // registerCallback(std::move(url_pattern), std::move(callback.m_in), std::move(callback.m_out));
+        return inserted; // registerCallback(std::move(url_pattern),
+                         // std::move(callback.m_in), std::move(callback.m_out));
     }
 
     bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut &&out)
     {
         return registerCallback(std::move(url_pattern), std::move(UrlCallbackFull{in, out}));
 
-        // auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern), std::move(UrlCallbackFull{in, out}));
-        // if (inserted)
-        //     std::cout << "Server::registerCallback: callback to '" << it->first << "' registered\n";
+        // auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern),
+        // std::move(UrlCallbackFull{in, out})); if (inserted)
+        //     std::cout << "Server::registerCallback: callback to '" << it->first <<
+        //     "' registered\n";
         // else
-        //     std::cout << "Server::registerCallback: callback to '" << it->first << "' NOT registered\n";
+        //     std::cout << "Server::registerCallback: callback to '" << it->first <<
+        //     "' NOT registered\n";
         // return inserted;
     }
 
@@ -261,18 +283,24 @@ namespace ripc
         if (!IS_ID_VALID(ntf.m_sender_id) || !IS_ID_VALID(ntf.m_sub_mem_id))
             return false;
 
-        LOG_INFO("[Server %d Handler]: Received notification type %d from Client %d SubMem id: %d)",
+        LOG_INFO("[Server %d Handler]: Received notification type %d from Client %d "
+                 "SubMem id: %d)",
                  m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
-        // std::cout << "[Server " << m_server_id << " Handler] Received notification type " << ntf.m_type
-        //           << " from Client " << ntf.m_sender_id << " (SubMem id: " << ntf.m_sub_mem_id << ")" << std::endl;
+        // std::cout << "[Server " << m_server_id << " Handler] Received notification
+        // type " << ntf.m_type
+        //           << " from Client " << ntf.m_sender_id << " (SubMem id: " <<
+        //           ntf.m_sub_mem_id << ")" << std::endl;
 
         switch (ntf.m_type)
         {
         case NEW_CONNECTION:
             // std::cout << "[Server " << m_server_id
-            //           << " Handler]: Received NEW_CONNECTION notification from Client "
-            //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id << std::endl;
-            LOG_INFO("[Server %d Handler]: Received NEW_CONNECTION from Client %d SubMem id: %d)",
+            //           << " Handler]: Received NEW_CONNECTION notification from Client
+            //           "
+            //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
+            //           << std::endl;
+            LOG_INFO("[Server %d Handler]: Received NEW_CONNECTION from Client %d "
+                     "SubMem id: %d)",
                      m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
             return addConnection(ntf.m_sender_id, ntf.m_sub_mem_id);
             break;
@@ -282,7 +310,8 @@ namespace ripc
             //           << " Handler]: Received NEW_MESSAGE notification from Client "
             //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
             //           << std::endl;
-            LOG_INFO("[Server %d Handler]: Received NEW_MESSAGE from Client %d SubMem id: %d)",
+            LOG_INFO("[Server %d Handler]: Received NEW_MESSAGE from Client %d SubMem "
+                     "id: %d)",
                      m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
             // вызваем обработчик нового сообщения
             return dispatchNewMessage(ntf);
@@ -290,16 +319,19 @@ namespace ripc
 
         case REMOTE_DISCONNECT:
             // std::cout << "[Server " << m_server_id
-            //           << " Handler]: Received REMOTE_DISCONNECT notification from Client "
+            //           << " Handler]: Received REMOTE_DISCONNECT notification from
+            //           Client "
             //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
             //           << std::endl;
-            LOG_INFO("[Server %d Handler]: Received REMOTE_DISCONNECT from Client %d SubMem id: %d)",
+            LOG_INFO("[Server %d Handler]: Received REMOTE_DISCONNECT from Client %d "
+                     "SubMem id: %d)",
                      m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
             return disconnectFromClient(findConnection(ntf.m_sender_id));
             break;
         default:
             LOG_ERR("Server %d Received unhandled notification type %d", m_server_id, ntf.m_type);
-            // std::cout << "Server " << m_server_id << ": Received unhandled notification type " << ntf.m_type << std::endl;
+            // std::cout << "Server " << m_server_id << ": Received unhandled
+            // notification type " << ntf.m_type << std::endl;
         }
         return false;
     }
@@ -314,13 +346,19 @@ namespace ripc
         if (!con)
         {
             // throw std::logic_error(
-            //    "Server::dispatchNewMessage: doesnt have conection to client: " + std::to_string(ntf.m_sender_id));
+            //    "Server::dispatchNewMessage: doesnt have conection to client: " +
+            //    std::to_string(ntf.m_sender_id));
             LOG_ERR("Server %d doesnt have conection to client: %d", m_server_id, ntf.m_sender_id);
             return false;
         }
         auto &mem = con->m_sub_mem_p;
 
         // создаем ReadBuffer для чтения из памяти
+        if (!mem.second)
+        {
+            LOG_ERR("empty memory ptr in connection");
+            return false;
+        }
         ReadBufferView rb(*mem.second);
 
         // читаем URL
@@ -329,7 +367,8 @@ namespace ripc
         // если url нет, тогда игнорируем это запрос
         if (!url_str)
         {
-            // std::cerr << "Server::dispatchNewMessage: there is no URL in the memory\n";
+            // std::cerr << "Server::dispatchNewMessage: there is no URL in the
+            // memory\n";
             LOG_ERR("there is no URL in the memory");
             return false;
         }
@@ -352,7 +391,8 @@ namespace ripc
                 // обрабатываем входящий запрос
                 if (callback_struct.m_in)
                 {
-                    // std::cout << "Server::dispatchNewMessage: calling input callback" << std::endl;
+                    // std::cout << "Server::dispatchNewMessage: calling input callback" <<
+                    // std::endl;
                     LOG_INFO("Calling input callback");
                     callback_struct.m_in(url, rb);
                 }
@@ -361,10 +401,11 @@ namespace ripc
                 if (callback_struct.m_out)
                 {
                     LOG_INFO("Calling output callback");
-                    // std::cout << "Server::dispatchNewMessage: calling output callback" << std::endl;
+                    // std::cout << "Server::dispatchNewMessage: calling output callback" <<
+                    // std::endl;
                     callback_struct.m_out(wb);
-                    wb.finalizePayload();
                 }
+                wb.finalizePayload();
 
                 // отправляем ответ клиенту
                 return writeToClient(con, wb);
@@ -373,8 +414,18 @@ namespace ripc
         }
 
         if (!found_callback)
-            LOG_ERR("There is no callback for url: %s", *url_str);
-        // std::cerr << "[Server::dispatchNewMessage] There is no callback for url: " << *url_str << std::endl;
+        {
+            if (url_str)
+            {
+                LOG_ERR("There is no callback for url: %s", std::string(*url_str).c_str());
+            }
+            // std::cerr << "[Server::dispatchNewMessage] There is no callback for url:
+            // " << *url_str << std::endl;
+            else
+            {
+                LOG_ERR("There is no callback for url");
+            }
+        }
         return false;
     }
 
@@ -390,19 +441,16 @@ namespace ripc
         {
             LOG_ERR("Unable to disconnect NULL connection");
             return false;
-            // throw std::runtime_error("Server::disconnectFromClient: Unable to disconnect NULL connection");
+            // throw std::runtime_error("Server::disconnectFromClient: Unable to
+            // disconnect NULL connection");
         }
 
         // удалить ячейку памяти
         m_mappings.erase(con->m_sub_mem_p.first);
 
         // удалить соединениеs
-        auto it = std::find_if(
-            m_connections.begin(), m_connections.end(),
-            [&con](const auto &el)
-            {
-                return el->client_id == con->client_id;
-            });
+        auto it = std::find_if(m_connections.begin(), m_connections.end(),
+                               [&con](const auto &el) { return el->client_id == con->client_id; });
 
         m_connections.erase(it);
 
@@ -418,7 +466,8 @@ namespace ripc
 
         if (!IS_ID_VALID(client_id))
         {
-            // throw std::invalid_argument("Invalid client_id: " + std::to_string(client_id));
+            // throw std::invalid_argument("Invalid client_id: " +
+            // std::to_string(client_id));
             LOG_ERR("Invalid client_id: %s", client_id);
             return nullptr;
         }
@@ -449,7 +498,8 @@ namespace ripc
 
         if (m_mappings.size() >= DEFAULTS::MAX_SERVERS_MAPPING)
         {
-            // throw std::out_of_range("Not enough space for one more mapping in server: id: " + std::to_string(m_server_id));
+            // throw std::out_of_range("Not enough space for one more mapping in server:
+            // id: " + std::to_string(m_server_id));
             LOG_ERR("Not enough space for one more mapping in server_id: %d", m_server_id);
             return Server::ConnectionInfo::m_null_submem;
         }
@@ -460,10 +510,12 @@ namespace ripc
         {
             LOG_INFO("SubMem with id: %d already exist", shm_id);
             return *it;
-            // throw std::out_of_range("SubMem with id: " + std::to_string(shm_id) + " already exist");
+            // throw std::out_of_range("SubMem with id: " + std::to_string(shm_id) + "
+            // already exist");
         }
 
-        // std::cout << "Server " << m_server_id << ": Created mapping slot for shm_id " << shm_id << std::endl;
+        // std::cout << "Server " << m_server_id << ": Created mapping slot for shm_id
+        // " << shm_id << std::endl;
         LOG_INFO("Server %d: Created mapping slot for shm_id %d", m_server_id, shm_id);
         return *it;
     }
@@ -514,9 +566,9 @@ namespace ripc
         auto &map = findOrCreateSHM(shm_id);
 
         // если нет такой памяти
-        if(map == Server::ConnectionInfo::m_null_submem)
+        if (map == Server::ConnectionInfo::m_null_submem)
         {
-            
+
             return false;
         }
 

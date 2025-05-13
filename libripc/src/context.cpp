@@ -1,25 +1,21 @@
-#include "ripc/logger.hpp"
 #include "ripc/context.hpp"
-#include <unistd.h> // close, sysconf
+#include "ripc/logger.hpp"
+#include <cstring>  // strerror
 #include <fcntl.h>  // open flags
-#include <stdexcept>
-#include <system_error> // Для std::system_error при ошибках syscall
-#include <cstring>      // strerror
-#include <iostream>
+#include <unistd.h> // close, sysconf
 
 namespace ripc
 {
-#define CHECK_INIT                      \
-    {                                   \
-        if (!isInitialized())           \
-        {                               \
-            LOG_ERR("Not initialized"); \
-            return false;               \
-        }                               \
+#define CHECK_INIT                                                                                                     \
+    {                                                                                                                  \
+        if (!isInitialized())                                                                                          \
+        {                                                                                                              \
+            LOG_ERR("Not initialized");                                                                                \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
 
-    RipcContext::RipcContext()
-        : device_fd(-1), page_size(-1), initialized(false)
+    RipcContext::RipcContext() : device_fd(-1), page_size(-1), initialized(false)
     {
     }
 
@@ -85,7 +81,8 @@ namespace ripc
             }
             // else
             //{
-            //     std::cerr << "Context: sysconf(_SC_PAGE_SIZE) returned negative value without setting errno." << std::endl;
+            //     std::cerr << "Context: sysconf(_SC_PAGE_SIZE) returned negative value without setting errno." <<
+            //     std::endl;
             // }
             page_size = 4096; // Используем значение по умолчанию
             LOG_WARN("Using default page size: %d", page_size);

@@ -20,13 +20,15 @@ RIPC_ROOT_INCLUDE ?= $(abspath $(src)/../include)
 # получение нужного компилятора
 CURRENT := $(shell uname -r)
 KERNELDIR ?= /lib/modules/$(CURRENT)/build
-CC := $(shell grep CONFIG_CC_VERSION_TEXT /boot/config-$(CURRENT) | head -n 1 | cut -d'"' -f2 | awk '{print $$1}')
+CC := gcc #$(shell grep CONFIG_CC_VERSION_TEXT /boot/config-$(CURRENT) | head -n 1 | cut -d'"' -f2 | awk '{print $$1}')
 
 # Добавляем пути:
 # 1. Корневой include
 # 2. Текущий каталог исходников драйвера ($(src) == driver/)
 ccflags-y += -I$(RIPC_ROOT_INCLUDE)
-ccflags-y += -I$(src)
+#ccflags-y += -I$(src)
+ccflags-y += -I$(PWD)
+
 
 # --- Цели Makefile (для вызова из CMake или вручную) ---
 
@@ -36,6 +38,7 @@ all: modules
 
 # Стандартные цели Kbuild
 modules modules_install clean help:
+	@echo FLAGS: $(ccflags-y)
 	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y)"
 
 .PHONY: all modules modules_install clean help
@@ -45,6 +48,7 @@ modules modules_install clean help:
 
 b:
 	@echo "[Driver Makefile] Building (manual target 'b')..."
+	@echo FLAGS: $(ccflags-y)
 	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y)"
 
 c:

@@ -1,50 +1,45 @@
-#include "ripc/logger.hpp"
 #include "ripc/client.hpp"
-#include "ripc/context.hpp" // Для context.getFd()
-#include "ripc.h"           // IOCTL, notification_data, MAX_*
 #include "id_pack.h"        // pack_ids, IS_ID_VALID
+#include "ripc.h"           // IOCTL, notification_data, MAX_*
+#include "ripc/context.hpp" // Для context.getFd()
+#include "ripc/logger.hpp"
+#include <cstring> // memcpy, strncpy, memset
+#include <iostream>
+#include <sstream>
 #include <sys/ioctl.h>
 #include <sys/mman.h> // mmap, munmap
 #include <unistd.h>   // close не нужен
-#include <cstring>    // memcpy, strncpy, memset
-#include <stdexcept>
-#include <system_error>
-#include <sstream>
-#include <iomanip>
-#include <iostream>
 
 namespace ripc
 {
 
-#define CHECK_INIT                      \
-    {                                   \
-        if (!isInitialized())           \
-        {                               \
-            LOG_ERR("Not initialized"); \
-            return false;               \
-        }                               \
+#define CHECK_INIT                                                                                                     \
+    {                                                                                                                  \
+        if (!isInitialized())                                                                                          \
+        {                                                                                                              \
+            LOG_ERR("Not initialized");                                                                                \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
-#define CHECK_CONNECTED                         \
-    {                                           \
-        if (!isInitialized() || !isConnected()) \
-        {                                       \
-            LOG_ERR("Not connected");           \
-            return false;                       \
-        }                                       \
+#define CHECK_CONNECTED                                                                                                \
+    {                                                                                                                  \
+        if (!isInitialized() || !isConnected())                                                                        \
+        {                                                                                                              \
+            LOG_ERR("Not connected");                                                                                  \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
-#define CHECK_MAPPED                                           \
-    {                                                          \
-        if (!isInitialized() || !isConnected() || !isMapped()) \
-        {                                                      \
-            LOG_ERR("Not mapped");                             \
-            return false;                                      \
-        }                                                      \
+#define CHECK_MAPPED                                                                                                   \
+    {                                                                                                                  \
+        if (!isInitialized() || !isConnected() || !isMapped())                                                         \
+        {                                                                                                              \
+            LOG_ERR("Not mapped");                                                                                     \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
 
     // Приватный конструктор
-    Client::Client(RipcContext &ctx)
-        : m_context(ctx), m_sub_mem(m_context),
-          m_callback(nullptr), m_is_request_sent(0)
+    Client::Client(RipcContext &ctx) : m_context(ctx), m_sub_mem(m_context), m_callback(nullptr), m_is_request_sent(0)
     {
         // ID будет установлен в init()
         // std::cout << "Client: Basic construction." << std::endl;
@@ -63,12 +58,14 @@ namespace ripc
         if (ioctl(m_context.getFd(), IOCTL_REGISTER_CLIENT, &temp_client_id) < 0)
         {
             LOG_CRIT("Client init failed: IOCTL_REGISTER_CLIENT failed");
-            // throw std::runtime_error("Client init failed: IOCTL_REGISTER_CLIENT failed");
+            // throw std::runtime_error("Client init failed: IOCTL_REGISTER_CLIENT
+            // failed");
             return false;
         }
         if (!IS_ID_VALID(temp_client_id))
         {
-            // throw std::runtime_error("Client init failed: Kernel returned invalid client_id: " + std::to_string(temp_client_id));
+            // throw std::runtime_error("Client init failed: Kernel returned invalid
+            // client_id: " + std::to_string(temp_client_id));
             LOG_CRIT("Client init failed: Kernel returned invalid client_id: %d", temp_client_id);
             return false;
         }
@@ -77,7 +74,8 @@ namespace ripc
         this->m_client_id = temp_client_id;
 
         m_initialized = true;
-        // std::cout << "Client initialized with ID " << m_client_id << "." << std::endl;
+        // std::cout << "Client initialized with ID " << m_client_id << "." <<
+        // std::endl;
         LOG_INFO("Client initialized with ID %d", m_client_id);
         return true;
     }
@@ -103,7 +101,8 @@ namespace ripc
     //     if (!m_initialized)
     //         LOG_INFO("Client (ID: %d) is not initialized");
     //     return m_initialized;
-    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) + ") is not initialized.");
+    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) +
+    //     ") is not initialized.");
     // }
     // bool Client::checkMapped() const
     // {
@@ -111,7 +110,8 @@ namespace ripc
     //     if (!checkInitialized() || !m_sub_mem.m_is_mapped)
     //         LOG_INFO("Client`s (ID: %d) memory is not mapped");
     //     return checkInitialized() && m_sub_mem.m_is_mapped
-    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) + ") memory not mapped.");
+    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) +
+    //     ") memory not mapped.");
     // }
 
     bool Client::call(const Url &url, CallbackIn &&in, CallbackOut &&out)
@@ -138,7 +138,8 @@ namespace ripc
             out(wb);
         }
         wb.finalizePayload();
-        // std::cout << "Client::call: sending message '" << wb << "' to: " << url << std::endl;
+        // std::cout << "Client::call: sending message '" << wb << "' to: " << url <<
+        // std::endl;
         LOG_INFO("Client::call: sending message '%s' to: %s", wb.getStr().c_str(), url.getUrl().c_str());
 
         // уведомляем драйвер
@@ -148,13 +149,15 @@ namespace ripc
             if (ioctl(m_context.getFd(), IOCTL_CLIENT_END_WRITING, packed_id) < 0)
             {
                 LOG_ERR("Client %d: IOCTL_CLIENT_END_WRITING failed with error: %d", m_client_id, strerror(errno));
-                // perror(("Client " + std::to_string(m_client_id) + ": Warning - IOCTL_CLIENT_END_WRITING failed").c_str());
+                // perror(("Client " + std::to_string(m_client_id) + ": Warning -
+                // IOCTL_CLIENT_END_WRITING failed").c_str());
             }
         }
         else
         {
             LOG_ERR("Client %d: Warning - Failed to pack ID for end writing notification.", m_client_id);
-            // std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID for end writing notification." << std::endl;
+            // std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID
+            // for end writing notification." << std::endl;
         }
 
         // сохраняем обработчик ответа
@@ -209,7 +212,8 @@ namespace ripc
         if (ioctl(m_context.getFd(), IOCTL_CONNECT_TO_SERVER, &connect_data) < 0)
         {
             // m_connected_server_name.clear(); // Сброс при ошибке
-            // throw std::runtime_error("Client " + std::to_string(m_client_id) + ": IOCTL_CONNECT_TO_SERVER failed for '" + server_name + "'");
+            // throw std::runtime_error("Client " + std::to_string(m_client_id) + ":
+            // IOCTL_CONNECT_TO_SERVER failed for '" + server_name + "'");
             LOG_ERR("Client %d: IOCTL_CONNECT_TO_SERVER failed for server '%s'", m_client_id, server_name.c_str());
             return false;
         }
@@ -221,7 +225,8 @@ namespace ripc
         m_connected_server_name = server_name;
 
         LOG_INFO("Client %d: Connect request sent for server '%s'", m_client_id, server_name.c_str())
-        // std::cout << "Client " << m_client_id << ": Connect request sent for server '" << server_name << "'." << std::endl;
+        // std::cout << "Client " << m_client_id << ": Connect request sent for server
+        // '" << server_name << "'." << std::endl;
         return true;
     }
 
@@ -240,7 +245,8 @@ namespace ripc
         if (ioctl(m_context.getFd(), IOCTL_CLIENT_DISCONNECT, packed_id) < 0)
         {
             LOG_ERR("Client %d: failed IOCTL_CLIENT_DISCONNECT", m_client_id);
-            // throw std::runtime_error("Client::disconnect: id " + std::to_string(m_client_id) +
+            // throw std::runtime_error("Client::disconnect: id " +
+            // std::to_string(m_client_id) +
             //                          ": failed IOCTL_CLIENT_DISCONNECT");
             return false;
         }
@@ -286,13 +292,15 @@ namespace ripc
 
         LOG_INFO("[Client %d Handler] Received notification:", m_client_id);
         LOG_INFO("\tType: %d from server: %d", ntf.m_type, ntf.m_reciver_id);
-        // std::cout << "[Client " << m_client_id << " Handler] Received notification:" << std::endl;
-        // std::cout << "  Type: " << ntf.m_type << ", From Server: " << ntf.m_sender_id << std::endl;
+        // std::cout << "[Client " << m_client_id << " Handler] Received
+        // notification:" << std::endl; std::cout << "  Type: " << ntf.m_type << ",
+        // From Server: " << ntf.m_sender_id << std::endl;
 
         switch (ntf.m_type)
         {
         case NEW_MESSAGE:
-            LOG_INFO("[Client %d Handler]: Received NEW_MESSAGE notification from Server: %d using SubMem %d",
+            LOG_INFO("[Client %d Handler]: Received NEW_MESSAGE notification from "
+                     "Server: %d using SubMem %d",
                      m_client_id, ntf.m_sender_id, ntf.m_sub_mem_id)
             // std::cout << "[Client " << m_client_id
             //           << " Handler]: Received NEW_MESSAGE notification from Server: "
@@ -301,7 +309,8 @@ namespace ripc
             return dispatchNewMessage(ntf);
 
         case REMOTE_DISCONNECT:
-            LOG_INFO("[Client %d Handler]: Received REMOTE_DISCONNECT notification from Server: %d using SubMem %d",
+            LOG_INFO("[Client %d Handler]: Received REMOTE_DISCONNECT notification "
+                     "from Server: %d using SubMem %d",
                      m_client_id, ntf.m_sender_id, ntf.m_sub_mem_id)
             // std::cout << "[Client " << m_client_id
             //           << " Handler]: Received REMOTE_DISCONNECT from Server: "
@@ -338,7 +347,8 @@ namespace ripc
         else
         {
             LOG_INFO("Client %d: There is no callback", m_client_id);
-            // std::cout << "Client::dispatchNewMessage: There is no callback" << std::endl;
+            // std::cout << "Client::dispatchNewMessage: There is no callback" <<
+            // std::endl;
         }
         m_is_request_sent = 0;
         return true;

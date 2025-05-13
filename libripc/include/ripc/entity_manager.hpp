@@ -3,22 +3,20 @@
 
 #include "context.hpp" // Менеджер владеет контекстом
 #include "types.hpp"   // Для NotificationHandler и других общих типов
+#include <atomic>      // std::atomic<bool> для флага потока
+#include <map>         // Используем для карты обработчиков (enum -> handler)
 #include <memory>      // std::unique_ptr
+#include <mutex>       // std::mutex, std::lock_guard
 #include <string>
-#include <unordered_map> // Используем для быстрого поиска по ID
-#include <map>           // Используем для карты обработчиков (enum -> handler)
-#include <mutex>         // std::mutex, std::lock_guard
 #include <thread>        // std::thread для слушателя
-#include <atomic>        // std::atomic<bool> для флага потока
-#include <functional>    // std::function для колбэков
-#include <stdexcept>     // Для исключений
+#include <unordered_map> // Используем для быстрого поиска по ID
 
 // Прямые объявления зависимых классов, чтобы избежать включения их заголовков здесь
 namespace ripc
 {
     class Server;
     class Client;
-}
+} // namespace ripc
 
 namespace ripc
 {
@@ -26,7 +24,7 @@ namespace ripc
     // Синглтон Менеджер и Фабрика для Клиентов и Серверов
     class RipcEntityManager
     {
-    private:
+      private:
         // --- Данные ---
         std::unique_ptr<RipcContext> context; // Владеет единственным экземпляром контекста
         // Карты для хранения и владения объектами (ID -> Умный указатель)
@@ -73,7 +71,7 @@ namespace ripc
         // проверка инициализации
         bool isInitialized() const;
 
-    public:
+      public:
         // --- Доступ к синглтону ---
 
         /**
@@ -121,7 +119,7 @@ namespace ripc
          * @param server Указатель на объект сервера.
          * @return true, если сервер был найден и удален, иначе false.
          */
-        bool deleteServer(Server* server);
+        bool deleteServer(Server *server);
 
         /**
          * @brief Удаляет клиента по его ID ядра.

@@ -1,27 +1,33 @@
-#include <linux/module.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
-#include <linux/slab.h>
-#include <linux/mm.h>
-#include <linux/sched/signal.h> // Для send_sig_info, struct kernel_siginfo
-#include <linux/list.h>
-#include <linux/string.h>
-#include <linux/signal.h> // Для определения сигналов (SIGUSR1) и SI_QUEUE
-#include <linux/mutex.h>
-#include <linux/errno.h>
-#include <linux/atomic.h>    // атомарные операции
-#include <linux/io.h>        // Добавлено для virt_to_phys
-#include <asm/pgtable.h>     // макросы для работы с таблицей страниц
-#include <linux/cdev.h>      // Символьные устройства cdev
-#include <asm/ioctl.h>       // Для доп проверок в ioctl
-#include <linux/poll.h>      // для работы с poll
 #include "../include/ripc.h" // константы для драйвера
-#include "err.h"             // макросы для логов
-#include "connection.h"      // объект соединения
 #include "client.h"
+#include "connection.h" // объект соединения
+#include "err.h"        // макросы для логов
 #include "server.h"
 #include "shm.h"
 #include "task.h"
+#include <asm/ioctl.h>    // Для доп проверок в ioctl
+#include <asm/pgtable.h>  // макросы для работы с таблицей страниц
+#include <linux/atomic.h> // атомарные операции
+#include <linux/cdev.h>   // Символьные устройства cdev
+#include <linux/errno.h>
+#include <linux/fs.h>
+#include <linux/init.h>
+#include <linux/io.h> // Добавлено для virt_to_phys
+#include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/mm.h>
+#include <linux/module.h>
+#include <linux/mutex.h>
+#include <linux/poll.h>         // для работы с poll
+#include <linux/sched/signal.h> // Для send_sig_info, struct kernel_siginfo
+#include <linux/signal.h>       // Для определения сигналов (SIGUSR1) и SI_QUEUE
+#include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Bogdan");
+MODULE_DESCRIPTION("Driver for RESTful ipc");
 
 // Переменные для регистрации устройства
 static int g_major = 0;           // номер устройства (major)
@@ -107,8 +113,8 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             break;
         }
 
-        INF("REGISTER_SERVER: New server is registered: (ID:%d) (NAME:%s) (PID:%d)",
-            server->m_id, server->m_name, server->m_task_p->m_reg_task->m_task_p->pid);
+        INF("REGISTER_SERVER: New server is registered: (ID:%d) (NAME:%s) (PID:%d)", server->m_id, server->m_name,
+            server->m_task_p->m_reg_task->m_task_p->pid);
         break;
 
         // регистрация нового клиента
@@ -134,8 +140,8 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             break;
         }
 
-        INF("REGISTER_CLIENT: New client is registered: (ID:%d) (PID:%d)",
-            client->m_id, client->m_task_p->m_reg_task->m_task_p->pid);
+        INF("REGISTER_CLIENT: New client is registered: (ID:%d) (PID:%d)", client->m_id,
+            client->m_task_p->m_reg_task->m_task_p->pid);
         break;
 
         // подключение клиента к серверу
@@ -153,8 +159,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // если клиент подключен к серверу, то выходим
         if (client->m_conn_p)
         {
-            INF("CONNECT_TO_SERVER: client %d already connected to server %s",
-                con.client_id, con.server_name);
+            INF("CONNECT_TO_SERVER: client %d already connected to server %s", con.client_id, con.server_name);
             return -EEXIST;
         }
 
@@ -280,8 +285,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         if (!conn)
         {
-            ERR("There is no connection in client (ID:%d)(PID:%d)",
-                client_id, reg_task->m_task_p->pid);
+            ERR("There is no connection in client (ID:%d)(PID:%d)", client_id, reg_task->m_task_p->pid);
             return -ENOENT;
         }
 
@@ -316,8 +320,8 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // если не нашлось такого серверного соединения
         if (!scon)
         {
-            ERR("There is no server connection unit for connection btw server (ID:%d) and sub_mem (ID:%d)",
-                server_id, sub_mem_id);
+            ERR("There is no server connection unit for connection btw server (ID:%d) and sub_mem (ID:%d)", server_id,
+                sub_mem_id);
             return -ENOENT;
         }
 
@@ -369,8 +373,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         if (!conn)
         {
-            ERR("There is no connection in client (ID:%d)(PID:%d)",
-                client_id, reg_task->m_task_p->pid);
+            ERR("There is no connection in client (ID:%d)(PID:%d)", client_id, reg_task->m_task_p->pid);
             return -ENOENT;
         }
 
@@ -443,8 +446,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     int target_id = unpack_id1(packed_id); // id клиента либо сервера
     int sub_id = unpack_id2(packed_id);    // id памяти (не всегда передается)
 
-    INF("packed_id=0x%x (from vma->vm_pgoff), target_id=%d, sub_mem_id=%d",
-        packed_id, target_id, sub_id);
+    INF("packed_id=0x%x (from vma->vm_pgoff), target_id=%d, sub_mem_id=%d", packed_id, target_id, sub_id);
 
     /**
      * Нужно найти зарегистрированного клиента или сервера,
@@ -543,11 +545,7 @@ found:
     sub = conn->m_mem_p;
 
     // Отображаем физическую память в пользовательское пространство
-    ret = remap_pfn_range(vma,
-                          vma->vm_start,
-                          page_to_pfn(sub->m_pages_p), 
-                          sub->m_size,
-                          vma->vm_page_prot);
+    ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(sub->m_pages_p), sub->m_size, vma->vm_page_prot);
 
     if (ret)
     {
@@ -588,8 +586,7 @@ static int ipc_release(struct inode *inode, struct file *filp)
         return 0;
     }
 
-    INF("Cleaning up task resources for PID %d",
-        reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
+    INF("Cleaning up task resources for PID %d", reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
 
     // Вся логика очистки теперь в reg_task_delete
     reg_task_delete(reg_task);
@@ -776,8 +773,7 @@ static void __exit ipc_exit(void)
         list_del(&reg_task->list);
         mutex_unlock(&g_reg_task_lock);
 
-        INF("Force deleting reg_task for PID %d during exit.",
-            reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
+        INF("Force deleting reg_task for PID %d during exit.", reg_task->m_task_p ? reg_task->m_task_p->pid : -1);
 
         // Вызовет очистку серверов/клиентов/соединений
         reg_task_delete(reg_task);
@@ -831,6 +827,3 @@ static void __exit ipc_exit(void)
 
 module_init(ipc_init);
 module_exit(ipc_exit);
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Bogdan");
-MODULE_DESCRIPTION("Driver for RESTful ipc");
