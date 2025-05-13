@@ -15,10 +15,10 @@ set(CMAKE_CXX_EXTENSIONS OFF) # Отключаем расширения GNU
 add_subdirectory(driver)
 # Затем user-space библиотека
 add_subdirectory(libripc)
-# Затем тестовое приложение
-#add_subdirectory(test_app)
-add_subdirectory(test_app2)
-add_subdirectory(test_app3)
+# Затем примеры
+add_subdirectory(examples)
+# Тесты
+add_subdirectory(tests)
 
 # --- Пользовательские цели верхнего уровня (для удобства) ---
 # Они будут работать, так как цели из подкаталогов видны на верхнем уровне
