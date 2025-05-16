@@ -98,6 +98,9 @@ namespace ripc
         // регистрация обработчика запросов на шаблонный url
         bool registerCallback(UrlPattern &&url_pattern, UrlCallbackFull &&callback);
         bool registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut&& out);
+
+        // отключение от клиента
+        bool disconnect(int id);
     };
 
 } // namespace ripc

@@ -72,6 +72,7 @@ namespace ripc
         bool isInitialized() const;
 
       public:
+        ~RipcEntityManager();
         // --- Доступ к синглтону ---
 
         /**

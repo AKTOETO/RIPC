@@ -80,13 +80,13 @@ namespace ripc
         bool m_memory_finalized;
 
         // разделитель между заголовками
-        static const char m_header_delimeter = ':';
+        static const char m_header_delimeter = '\t';//'\t';
 
         // разделитель между заголовками и полезной нагрузкой
-        static const char m_memory_delimeter = '\n';
+        static const char m_memory_delimeter = '\r';//'\r';
 
         // символ окончания сообщения
-        static const char m_memory_finalizer = '\0';
+        static const char m_memory_finalizer = '\0';//'\0'
 
     public:
         BufferView(Memory &mem);

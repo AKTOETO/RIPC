@@ -146,6 +146,8 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         // подключение клиента к серверу
     case IOCTL_CONNECT_TO_SERVER:
+
+        INF("IOCTL_CONNECT_TO_SERVER");
         // копируем запрос поделючения к серверу из userspace
         if (copy_from_user(&con, (void __user *)arg, sizeof(con)))
         {
@@ -185,6 +187,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_CLIENT_END_WRITING:
 
+        INF("IOCTL_CLIENT_END_WRITING");
         // Получение id клиента из аргумента
         int id = unpack_id1((u32)arg);
 
@@ -227,6 +230,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_SERVER_END_WRITING:
 
+        INF("IOCTL_SERVER_END_WRITING");
         // Получение id сервера и памяти из аргумента
         UNPACK_SC_SHM((u32)arg, server_id, sub_mem_id);
 
@@ -267,6 +271,8 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         break;
 
     case IOCTL_CLIENT_DISCONNECT:
+
+        INF("IOCTL_CLIENT_DISCONNECT");
         // Получение id клиента из аргумента
         int client_id = unpack_id1((u32)arg);
 
@@ -301,6 +307,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_SERVER_DISCONNECT:
 
+        INF("IOCTL_SERVER_DISCONNECT");
         // Получение id сервера и памяти из аргумента
         UNPACK_SC_SHM((u32)arg, server_id, sub_mem_id);
 
@@ -355,6 +362,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_CLIENT_UNREGISTER:
 
+        INF("IOCTL_CLIENT_UNREGISTER");
         // Получение id клиента из аргумента
         client_id = unpack_id1((u32)arg);
 
@@ -394,6 +402,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     case IOCTL_SERVER_UNREGISTER:
 
+        INF("IOCTL_SERVER_UNREGISTER");
         // Получение id сервера из аргумента
         server_id = unpack_id1((u32)arg);
 

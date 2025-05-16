@@ -53,7 +53,7 @@ static inline u32 pack_ids(int id1, int id2)
     // Проверка на допустимость значений (хотя generate_limited_id должен это гарантировать)
     if (!IS_ID_VALID(id1) || !IS_ID_VALID(id2))
     {
-        ERR("Invalid ID range: id1=%d, id2=%d\n", id1, id2);
+        // ERR("Invalid ID range: id1=%d, id2=%d\n", id1, id2);
         return -EINVAL; // Индикация ошибки
     }
     // Сдвигаем id1 влево на 16 бит и объединяем с id2 через побитовое ИЛИ

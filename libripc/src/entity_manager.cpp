@@ -491,9 +491,13 @@ namespace ripc
         return is_initialized;
     }
 
+    RipcEntityManager::~RipcEntityManager()
+    {
+        doShutdown();
+    }
     bool RipcEntityManager::notificationListenerLoop()
     {
-        LOG_INFO("[Listener Thread %d]: Started", std::this_thread::get_id());
+        LOG_INFO("[Listener Thread %ld]: Started", std::this_thread::get_id());
         // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Started." << std::endl;
         int local_fd = -1;
 

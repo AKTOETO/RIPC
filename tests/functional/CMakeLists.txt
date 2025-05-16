@@ -17,7 +17,7 @@ foreach(TEST_SOURCE_FILE ${TEST_SOURCES})
     
     # Линкуем тест с вашей библиотекой libripc
     # Это также добавит необходимые include пути от libripc
-    target_link_libraries(${TEST_NAME} PRIVATE GTest::gtest ripc)
+    target_link_libraries(${TEST_NAME} PRIVATE GTest::gtest_main ripc)
     
     # Опционально: если тестам нужны специфичные флаги или библиотеки
     # target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra -g)

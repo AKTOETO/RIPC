@@ -116,6 +116,7 @@ namespace ripc
 
     bool Client::call(const Url &url, CallbackIn &&in, CallbackOut &&out)
     {
+        LOG_INFO("Client::call: sending message");
         CHECK_MAPPED
 
         // проверка на ответ на предыдущий запрос
@@ -151,6 +152,17 @@ namespace ripc
                 LOG_ERR("Client %d: IOCTL_CLIENT_END_WRITING failed with error: %d", m_client_id, strerror(errno));
                 // perror(("Client " + std::to_string(m_client_id) + ": Warning -
                 // IOCTL_CLIENT_END_WRITING failed").c_str());
+
+                // отмечаем, что запрос не отправлен
+                m_is_request_sent = 0;
+            }
+            else
+            {
+                // отмечаем, что запрос отправлен
+                m_is_request_sent = 1;
+
+                // сохраняем обработчик ответа
+                m_callback = in;
             }
         }
         else
@@ -158,15 +170,12 @@ namespace ripc
             LOG_ERR("Client %d: Warning - Failed to pack ID for end writing notification.", m_client_id);
             // std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID
             // for end writing notification." << std::endl;
+
+            // отмечаем, что запрос не отправлен
+            m_is_request_sent = 0;
         }
 
-        // сохраняем обработчик ответа
-        m_callback = in;
-
-        // отмечаем, что запрос отправлен
-        m_is_request_sent = 1;
-
-        return false;
+        return m_is_request_sent;
     }
 
     // --- Публичные методы ---

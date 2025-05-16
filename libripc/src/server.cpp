@@ -41,12 +41,7 @@ namespace ripc
           m_mappings(DEFAULTS::MAX_SERVERS_MAPPING)
     {
         m_connections.reserve(DEFAULTS::MAX_SERVERS_CONNECTIONS);
-        if (m_name.empty() || m_name.length() >= MAX_SERVER_NAME)
-        {
-            // throw std::invalid_argument("Invalid server name.");
-            LOG_WARN("Invalid arguments");
-            return;
-        }
+        
         // std::cout << "Server '" << m_name << "': Basic construction." << std::endl;
         LOG_INFO("Server's basic constructor");
     }
@@ -59,6 +54,18 @@ namespace ripc
         // std::cout << "Server '" << m_name << "': init() called by EntityManager."
         // << std::endl;
         LOG_INFO("Server '%s': init() called by EntityManager", m_name.c_str());
+
+        // Проверка имени сервера
+        if (m_name.empty())
+        {
+            LOG_CRIT("Server's name is empty");
+            return false;
+        }
+        if(m_name.length() >= MAX_SERVER_NAME)
+        {
+            LOG_CRIT("Server's name too long");
+            return false;
+        }
 
         server_registration reg_data;
         strncpy(reg_data.name, m_name.c_str(), MAX_SERVER_NAME - 1);
@@ -271,6 +278,11 @@ namespace ripc
         // return inserted;
     }
 
+    bool Server::disconnect(int id)
+    {
+        return disconnectFromClient(findConnection(id));
+    }
+    
     // --- Обработка Уведомлений ---
     bool Server::handleNotification(const notification_data &ntf)
     {
@@ -362,6 +374,7 @@ namespace ripc
         ReadBufferView rb(*mem.second);
 
         // читаем URL
+        LOG_INFO("Getting URL from server");
         auto url_str = rb.getHeader();
 
         // если url нет, тогда игнорируем это запрос
@@ -376,7 +389,7 @@ namespace ripc
         // создаем URl из строки
         Url url(*url_str);
         // std::cout << "Server::dispatchNewMessage: url: [" << url << "]\n";
-        LOG_INFO("url: %s", url.getUrl().c_str());
+        LOG_INFO("url: '%s'", url.getUrl().c_str());
 
         // создаем выходной буфер
         WriteBufferView wb(*mem.second);
@@ -417,7 +430,7 @@ namespace ripc
         {
             if (url_str)
             {
-                LOG_ERR("There is no callback for url: %s", std::string(*url_str).c_str());
+                LOG_ERR("There is no callback for url: '%s'", std::string(*url_str).c_str());
             }
             // std::cerr << "[Server::dispatchNewMessage] There is no callback for url:
             // " << *url_str << std::endl;
