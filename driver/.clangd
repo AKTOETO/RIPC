@@ -1,12 +1,19 @@
 CompileFlags:
-  Add: 
-    - -I/usr/src/linux/include
-    - -I/lib/modules/6.14.6-arch1-1/build/include
-    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include
-    - -I/lib/modules/6.14.6-arch1-1/build/arch/x86/include/generated
-    - -I/../include
-    - -D__KERNEL__
-    - -DMODULE
-    - -std=gnu11
-    - -nostdinc
-    - -isystem /usr/lib/clang/$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)/include
+  Add:
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/include  # Основные заголовки ядра
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/arch/x86/include # Архитектурно-зависимые заголовки (для x86)
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/arch/x86/include/generated # Сгенерированные архитектурно-зависимые заголовки
+    - -I/usr/src/linux-headers-6.14.6-arch1-1/include #если у вас есть отдельные заголовки
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/include/uapi        # Заголовки UAPI
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/arch/x86/include/uapi  # Архитектурно-зависимые UAPI
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/include/generated/uapi # Сгенерированные UAPI
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/include/linux      # Заголовки Linux
+    - -I/usr/lib/modules/6.14.6-arch1-1/build/arch/x86/include/generated/uapi
+    - -I.                                            # Текущая директория (важно для ваших собственных заголовочных файлов)
+    - -D__KERNEL__                                   # Определение макроса __KERNEL__
+    - -DMODULE                                       # Определение макроса MODULE
+    - -std=gnu11                                     # Стандарт C
+    - -nostdinc                                     # Отключает стандартные системные каталоги include
+    - -isystem /usr/lib/clang/$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)/include # Системные заголовки Clang
+    - -Wno-unused-variable
+    - -Wno-unused-function

@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
+#include <linux/errno.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Bogdan");
@@ -412,7 +413,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // если сервер не найден
         if (!server)
         {
-            ERR("There is no server with id %d", id);
+            ERR("There is no server with id %d", server_id);
             return -ENODATA;
         }
 
@@ -444,6 +445,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
     struct server_t *server = NULL;
     struct sub_mem_t *sub = NULL;
     struct connection_t *conn = NULL;
+    struct serv_conn_list_t *srv_conn = NULL;
     u32 packed_cli_sub_id = 0;
 
     // id не может быть отрицательным
@@ -522,7 +524,16 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
             if (sub_id != 0)
             {
                 // ищем нужную память
-                conn = server_find_conn_by_sub_mem_id(server, sub_id)->conn;
+                srv_conn = server_find_conn_by_sub_mem_id(server, sub_id);
+
+                // проверка на существование подключенной памяти с таким id
+                if (!srv_conn)
+                {
+                    ERR("Server (ID: %d) (NAME: %s) does not have connection with (SHM MEM ID: %d)", server->m_id,
+                        server->m_name, sub_id);
+                    return -ENOENT;
+                }
+                conn = srv_conn->conn;
             }
             else
             {
@@ -630,7 +641,7 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
     // если получить не удалось
     if (!notif)
     {
-        INF("Error while fetching notification");
+        INF("There is no more notifications");
         return -ENOENT;
     }
     size = sizeof(notif->data);

@@ -20,15 +20,15 @@ RIPC_ROOT_INCLUDE ?= $(abspath $(src)/../include)
 # получение нужного компилятора
 CURRENT := $(shell uname -r)
 KERNELDIR ?= /lib/modules/$(CURRENT)/build
-CC := $(shell grep CONFIG_CC_VERSION_TEXT /boot/config-$(CURRENT) | head -n 1 | cut -d'"' -f2 | awk '{print $$1}')
-#CC := gcc
+#CC := $(shell grep CONFIG_CC_VERSION_TEXT /boot/config-$(CURRENT) | head -n 1 | cut -d'"' -f2 | awk '{print $$1}')
+CC := gcc
 
 # Добавляем пути:
 # 1. Корневой include
 # 2. Текущий каталог исходников драйвера ($(src) == driver/)
 ccflags-y += -I$(RIPC_ROOT_INCLUDE)
-ccflags-y += -I$(src)
-#ccflags-y += -I$(PWD)
+#ccflags-y += -I$(src)
+ccflags-y += -I$(PWD)
 
 
 # --- Цели Makefile (для вызова из CMake или вручную) ---

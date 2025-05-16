@@ -5,8 +5,8 @@
 #include "task.h"
 
 #include <linux/mm.h>     // операции с памятью
-#include <linux/string.h> // операции над строками
 #include <linux/sched.h>  // для current
+#include <linux/string.h> // операции над строками
 
 // Список соединений и его блокировка
 LIST_HEAD(g_servers_list);
@@ -66,8 +66,7 @@ void server_add_task(struct server_t *srv, struct servers_list_t *task)
     // то нельзя его переподключить
     if (srv->m_task_p)
     {
-        ERR("Server already connected to task (PID:%d)",
-            srv->m_task_p->m_reg_task->m_task_p->pid);
+        ERR("Server already connected to task (PID:%d)", srv->m_task_p->m_reg_task->m_task_p->pid);
         return;
     }
 
@@ -99,8 +98,7 @@ void server_cleanup_connection(struct server_t *srv, struct serv_conn_list_t *sc
 
     if (conn)
     {
-        INF("Processing connection for client %d, sub_mem %d",
-            conn->m_client_p ? conn->m_client_p->m_id : -1,
+        INF("Processing connection for client %d, sub_mem %d", conn->m_client_p ? conn->m_client_p->m_id : -1,
             conn->m_mem_p ? conn->m_mem_p->m_id : -1);
         // Вызываем delete_connection, которая обработает и другую сторону
         // и удалит соединение из глобального списка.
@@ -194,12 +192,10 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
     // Итерируемся по списку клиентов
     list_for_each_entry(server, &g_servers_list, list)
     {
-        if (server->m_task_p &&
-            server->m_task_p->m_reg_task->m_task_p->pid == pid &&
-            server->m_id == id)
+        if (server->m_task_p && server->m_task_p->m_reg_task->m_task_p->pid == pid && server->m_id == id)
         {
-            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
-                server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
+            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)", server->m_id, server->m_task_p->m_reg_task->m_task_p->pid,
+                server->m_name);
             mutex_unlock(&g_servers_lock);
             // Нашли совпадение - сохраняем результат
             return server;
@@ -231,8 +227,8 @@ struct server_t *find_server_by_id(int id)
     {
         if (server->m_id == id)
         {
-            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)",
-                server->m_id, server->m_task_p->m_reg_task->m_task_p->pid, server->m_name);
+            INF("FOUND server (ID:%d)(PID:%d)(NAME:%s)", server->m_id, server->m_task_p->m_reg_task->m_task_p->pid,
+                server->m_name);
             mutex_unlock(&g_servers_lock);
             // Нашли совпадение - сохраняем результат
             return server;
@@ -245,8 +241,7 @@ struct server_t *find_server_by_id(int id)
 }
 
 // поиск клиента из списка сервера по task_struct
-struct client_t *find_client_by_task_from_server(
-    struct task_struct *task, struct server_t *serv)
+struct client_t *find_client_by_task_from_server(struct task_struct *task, struct server_t *serv)
 {
     // проверяем входные данные
     if (!serv || !task)
@@ -262,8 +257,8 @@ struct client_t *find_client_by_task_from_server(
     // Итерируемся по списку подключений
     list_for_each_entry(conn, &serv->connection_list.list, list)
     {
-        INF("\tcomapre connected PID: %d and requested PID: %d",
-            task->pid, conn->conn->m_client_p->m_task_p->m_reg_task->m_task_p->pid);
+        INF("\tcomapre connected PID: %d and requested PID: %d", task->pid,
+            conn->conn->m_client_p->m_task_p->m_reg_task->m_task_p->pid);
         if (conn->conn->m_client_p->m_task_p->m_reg_task->m_task_p == task)
         {
             // Нашли совпадение - сохраняем результат
@@ -278,9 +273,8 @@ struct client_t *find_client_by_task_from_server(
 // добавление клиента к серверу
 int connect_client_to_server(struct server_t *server, struct client_t *client)
 {
-    INF("Connecting client (ID:%d)(PID:%d) to server (ID:%d)(PID:%d)",
-        client->m_id, client->m_task_p->m_reg_task->m_task_p->pid,
-        server->m_id, server->m_task_p->m_reg_task->m_task_p->pid);
+    INF("Connecting client (ID:%d)(PID:%d) to server (ID:%d)(PID:%d)", client->m_id,
+        client->m_task_p->m_reg_task->m_task_p->pid, server->m_id, server->m_task_p->m_reg_task->m_task_p->pid);
 
     // ищем свободную подобласть памяти
     struct sub_mem_t *sub = get_free_submem();
@@ -359,8 +353,7 @@ void server_delete_connection(struct server_t *srv, struct serv_conn_list_t *con
     kfree(con);
 }
 
-struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
-    struct server_t *srv, int sub_mem_id)
+struct serv_conn_list_t *server_find_conn_by_sub_mem_id(struct server_t *srv, int sub_mem_id)
 {
     // проверяем входные данные
     if (!srv || !IS_ID_VALID(sub_mem_id))
@@ -368,8 +361,7 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
         ERR("Invalid input params");
         return NULL;
     }
-    INF("Finding connection in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)",
-        srv->m_id, srv->m_name, sub_mem_id);
+    INF("Finding connection in server (ID: %d)(NAME: %s) with (SUB MEM ID: %d)", srv->m_id, srv->m_name, sub_mem_id);
 
     // соединение с клиентом и памятью
     struct serv_conn_list_t *conn = NULL;
@@ -378,7 +370,7 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
     // Итерируемся по списку подключений
     list_for_each_entry(conn, &srv->connection_list.list, list)
     {
-        if (conn->conn->m_mem_p && conn->conn->m_mem_p->m_id == sub_mem_id)
+        if (conn->conn && conn->conn->m_mem_p && conn->conn->m_mem_p->m_id == sub_mem_id)
         {
             // Нашли совпадение - сохраняем результат
             mutex_unlock(&srv->m_con_list_lock);
@@ -390,8 +382,7 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
     return NULL;
 }
 
-struct serv_conn_list_t *server_find_conn(
-    struct server_t *srv, struct connection_t *con)
+struct serv_conn_list_t *server_find_conn(struct server_t *srv, struct connection_t *con)
 {
     // проверяем входные данные
     if (!srv || !con)
@@ -429,6 +420,5 @@ struct serv_conn_list_t *server_find_conn(
 void delete_server_list()
 {
     struct server_t *server, *server_tmp;
-    list_for_each_entry_safe(server, server_tmp, &g_servers_list, list)
-        server_destroy(server);
+    list_for_each_entry_safe(server, server_tmp, &g_servers_list, list) server_destroy(server);
 }

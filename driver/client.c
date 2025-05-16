@@ -4,6 +4,7 @@
 #include "task.h"
 
 #include <linux/mm.h>
+#include "id.h"
 
 // Список соединений и его блокировка
 LIST_HEAD(g_clients_list);
