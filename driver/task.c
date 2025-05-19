@@ -1,16 +1,18 @@
 #include "task.h"
 #include "id_pack.h"
+#include "ripc.h"
+#include "server.h"
 
-#include <linux/pid.h> // pid_alive
 #include <linux/mm.h>
+#include <linux/pid.h> // pid_alive
 
 // Список соединений и его блокировка
 LIST_HEAD(g_reg_task_list);
 DEFINE_MUTEX(g_reg_task_lock);
+atomic_t g_reg_task_count = ATOMIC_INIT(0);
 
-struct notification_t *notification_create(
-    enum notif_sender who_sends, enum notif_type type,
-    int sub_mem_id, int sender_id, int reciver_id)
+struct notification_t *notification_create(enum notif_sender who_sends, enum notif_type type, int sub_mem_id,
+                                           int sender_id, int reciver_id)
 {
     // проверка типа отправителя
     if (!IS_NTF_SEND_VALID(who_sends))
@@ -29,8 +31,7 @@ struct notification_t *notification_create(
     // проверка всех идентификаторов
     if (!IS_ID_VALID(sender_id) || !IS_ID_VALID(sub_mem_id) || !IS_ID_VALID(reciver_id))
     {
-        ERR("some id is not valid (SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
-            sub_mem_id, sender_id, reciver_id);
+        ERR("some id is not valid (SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)", sub_mem_id, sender_id, reciver_id);
         return NULL;
     }
 
@@ -50,8 +51,8 @@ struct notification_t *notification_create(
     notif->data.m_type = type;
     INIT_LIST_HEAD(&notif->list);
 
-    INF("Created notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
-        type, who_sends, sub_mem_id, sender_id, reciver_id);
+    INF("Created notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)", type, who_sends,
+        sub_mem_id, sender_id, reciver_id);
 
     return notif;
 }
@@ -65,19 +66,13 @@ void notification_delete(struct notification_t *notif)
         return;
     }
 
-    INF("Deleting notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)",
-        notif->data.m_type,
-        notif->data.m_who_sends,
-        notif->data.m_sub_mem_id,
-        notif->data.m_sender_id,
-        notif->data.m_reciver_id);
+    INF("Deleting notif: (TYPE:%d)(WHO_SENDS:%d)(SUB_MEM_ID:%d)(SENDER_ID:%d)(RECIVER_ID:%d)", notif->data.m_type,
+        notif->data.m_who_sends, notif->data.m_sub_mem_id, notif->data.m_sender_id, notif->data.m_reciver_id);
 
     kfree(notif);
 }
 
-int notification_send(enum notif_sender sender,
-                      enum notif_type type,
-                      struct connection_t *con)
+int notification_send(enum notif_sender sender, enum notif_type type, struct connection_t *con)
 {
     if (!IS_NTF_SEND_VALID(sender))
     {
@@ -134,8 +129,7 @@ int notification_send(enum notif_sender sender,
     }
 
     // создание уведомления
-    struct notification_t *ntf = notification_create(
-        sender, type, sub_mem_id, sender_id, reciever_id);
+    struct notification_t *ntf = notification_create(sender, type, sub_mem_id, sender_id, reciever_id);
     if (!ntf)
     {
         ERR("Notif hasnt created");
@@ -149,16 +143,12 @@ int notification_send(enum notif_sender sender,
         {
         // отправил клиент, то есть полцчатель будет сервер
         case CLIENT:
-            INF("Notification sent to server (ID:%d)(PID:%d)(NAME:%s)",
-                reciever_id,
-                reciever_task->m_task_p->pid,
+            INF("Notification sent to server (ID:%d)(PID:%d)(NAME:%s)", reciever_id, reciever_task->m_task_p->pid,
                 con->m_server_p->m_name);
             break;
             // отправил сервер, то есть полцчатель будет клиент
         case SERVER:
-            INF("Notification sent to client (ID:%d)(PID:%d)",
-                reciever_id,
-                reciever_task->m_task_p->pid);
+            INF("Notification sent to client (ID:%d)(PID:%d)", reciever_id, reciever_task->m_task_p->pid);
 
             break;
         default:
@@ -175,8 +165,7 @@ int notification_send(enum notif_sender sender,
     return 0;
 }
 
-struct servers_list_t *servers_list_t_create(
-    struct reg_task_t *reg_task, struct server_t *serv)
+struct servers_list_t *servers_list_t_create(struct reg_task_t *reg_task, struct server_t *serv)
 {
     if (!reg_task || !serv)
     {
@@ -202,8 +191,7 @@ struct servers_list_t *servers_list_t_create(
     return srv_entr;
 }
 
-void servers_list_t_delete(
-    struct servers_list_t *srv_lst_entry)
+void servers_list_t_delete(struct servers_list_t *srv_lst_entry)
 {
     if (!srv_lst_entry)
     {
@@ -216,8 +204,7 @@ void servers_list_t_delete(
     INF("Deleted servers_list_t");
 }
 
-struct clients_list_t *clients_list_t_create(
-    struct reg_task_t *reg_task, struct client_t *cli)
+struct clients_list_t *clients_list_t_create(struct reg_task_t *reg_task, struct client_t *cli)
 {
     if (!reg_task || !cli)
     {
@@ -243,8 +230,7 @@ struct clients_list_t *clients_list_t_create(
     return cli_entr;
 }
 
-void clients_list_t_delete(
-    struct clients_list_t *cli_lst_entry)
+void clients_list_t_delete(struct clients_list_t *cli_lst_entry)
 {
     if (!cli_lst_entry)
     {
@@ -266,6 +252,11 @@ int reg_task_get_notif_count(struct reg_task_t *reg_task)
     }
 
     return atomic_read(&reg_task->m_num_of_notif);
+}
+
+int reg_task_can_add_task(void)
+{
+    return (atomic_read(&g_reg_task_count) < MAX_PROCESSES);
 }
 
 struct reg_task_t *reg_task_create(void)
@@ -298,11 +289,14 @@ struct reg_task_t *reg_task_create(void)
     }
 
     // инициализация полей
+    atomic_set(&reg_task->m_is_monitor, 0);
     INIT_LIST_HEAD(&reg_task->list);
     INIT_LIST_HEAD(&reg_task->m_clients);
     INIT_LIST_HEAD(&reg_task->m_notif_list);
     mutex_init(&reg_task->m_notif_list_lock);
     atomic_set(&reg_task->m_num_of_notif, 0);
+    atomic_set(&reg_task->m_num_of_servers, 0);
+    atomic_set(&reg_task->m_num_of_clients, 0);
     INIT_LIST_HEAD(&reg_task->m_servers);
     init_waitqueue_head(&reg_task->m_wait_queue);
     mutex_init(&reg_task->m_wait_queue_lock);
@@ -311,6 +305,7 @@ struct reg_task_t *reg_task_create(void)
     // добавление в глобальный список
     mutex_lock(&g_reg_task_lock);
     list_add(&reg_task->list, &g_reg_task_list);
+    atomic_inc(&g_reg_task_count);
     mutex_unlock(&g_reg_task_lock);
 
     INF("Created reg_task: (PID:%d)", task->pid);
@@ -392,6 +387,7 @@ void reg_task_delete(struct reg_task_t *reg_task)
     }
     mutex_lock(&g_reg_task_lock);
     list_del(&reg_task->list);
+    atomic_dec(&g_reg_task_count);
     mutex_unlock(&g_reg_task_lock);
     kfree(reg_task);
 
@@ -422,12 +418,42 @@ struct reg_task_t *reg_task_find_by_task_struct(struct task_struct *task)
     return NULL;
 }
 
-void reg_task_add_server(
-    struct reg_task_t *reg_task, struct server_t *serv)
+// проверка возможности добавления сервера
+int reg_task_can_add_server(struct reg_task_t *reg_task)
+{
+    if (!reg_task)
+    {
+        ERR("empty param");
+        return -ENOPARAM;
+    }
+
+    return !reg_task_is_monitor(reg_task) && (atomic_read(&reg_task->m_num_of_servers) < MAX_SERVERS_PER_PID);
+}
+
+// проверка возможности добавления клиента
+int reg_task_can_add_client(struct reg_task_t *reg_task)
+{
+    if (!reg_task)
+    {
+        ERR("empty param");
+        return -ENOPARAM;
+    }
+
+    return !reg_task_is_monitor(reg_task) && (atomic_read(&reg_task->m_num_of_clients) < MAX_CLIENTS_PER_PID);
+}
+
+void reg_task_add_server(struct reg_task_t *reg_task, struct server_t *serv)
 {
     if (!reg_task || !serv)
     {
         ERR("empty param");
+        return;
+    }
+
+    // проверка возможности добавления
+    if (!reg_task_can_add_server(reg_task))
+    {
+        ERR("cannot add server to task (TOO MUCH SERVERS)");
         return;
     }
 
@@ -446,16 +472,23 @@ void reg_task_add_server(
     // server_t -> servers_list_t
     server_add_task(serv, srv_entry);
 
-    INF("Server (ID:%d)(NAME:%s) added to task (PID:%d)",
-        serv->m_id, serv->m_name, reg_task->m_task_p->pid);
+    atomic_inc(&reg_task->m_num_of_servers);
+
+    INF("Server (ID:%d)(NAME:%s) added to task (PID:%d)", serv->m_id, serv->m_name, reg_task->m_task_p->pid);
 }
 
-void reg_task_add_client(
-    struct reg_task_t *reg_task, struct client_t *cli)
+void reg_task_add_client(struct reg_task_t *reg_task, struct client_t *cli)
 {
     if (!reg_task || !cli)
     {
         ERR("empty param");
+        return;
+    }
+
+    // проверка возможности добавления
+    if (!reg_task_can_add_client(reg_task))
+    {
+        ERR("cannot add client to task (TOO MUCH CLIENTS)");
         return;
     }
 
@@ -474,11 +507,12 @@ void reg_task_add_client(
     // client_t -> clients_list_t
     client_add_task(cli, cli_entry);
 
+    atomic_inc(&reg_task->m_num_of_clients);
+
     INF("Client (ID:%d) added to task (PID:%d)", cli->m_id, reg_task->m_task_p->pid);
 }
 
-int reg_task_add_notification(
-    struct reg_task_t *reg_task, struct notification_t *notif)
+int reg_task_add_notification(struct reg_task_t *reg_task, struct notification_t *notif)
 {
     if (!reg_task || !notif)
     {
@@ -509,6 +543,7 @@ void reg_task_delete_client(struct clients_list_t *cli_entry)
     if (cli_entry->m_client)
     {
         client_destroy(cli_entry->m_client);
+        atomic_dec(&cli_entry->m_reg_task->m_num_of_clients);
     }
     kfree(cli_entry);
 }
@@ -527,9 +562,54 @@ void reg_task_delete_server(struct servers_list_t *srv_entry)
     {
         // Удаляем сервер (из глоб. списка и kfree)
         server_destroy(srv_entry->m_server);
+        atomic_dec(&srv_entry->m_reg_task->m_num_of_servers);
     }
     // Освобождаем элемент списка reg_task
     kfree(srv_entry);
+}
+
+int reg_task_set_monitor(struct reg_task_t *reg_task)
+{
+    if (!reg_task)
+    {
+        ERR("reg_task is null");
+        return -ENODATA;
+    }
+
+    // если есть клиенты или серверы в процессе, то регисрация запрещена
+    if (atomic_read(&reg_task->m_num_of_clients) > 0 || atomic_read(&reg_task->m_num_of_servers) > 0)
+    {
+        ERR("cant set monitor type: there are some clients or servers");
+        return -EFAULT;
+    }
+
+    // Поиск монитора в глобальном списке зарегистрированных процессов
+    struct reg_task_t *entr = NULL;
+    mutex_lock(&g_reg_task_lock);
+    list_for_each_entry(entr, &g_reg_task_list, list)
+    {
+        if (reg_task_is_monitor(entr))
+        {
+            mutex_unlock(&g_reg_task_lock);
+            return -EEXIST;
+        }
+    }
+    mutex_unlock(&g_reg_task_lock);
+
+    // если же монитор найден не был, значит регистрируем его
+    atomic_inc(&reg_task->m_is_monitor);
+    return 0;
+}
+
+int reg_task_is_monitor(struct reg_task_t *reg_task)
+{
+    if (!reg_task)
+    {
+        ERR("reg_task is null");
+        return -ENODATA;
+    }
+
+    return atomic_read(&reg_task->m_is_monitor);
 }
 
 struct notification_t *reg_task_get_notification(struct reg_task_t *reg_task)
@@ -550,8 +630,7 @@ struct notification_t *reg_task_get_notification(struct reg_task_t *reg_task)
 
     mutex_lock(&reg_task->m_notif_list_lock);
     // получение уведомления
-    struct notification_t *notif =
-        list_first_entry(&reg_task->m_notif_list, struct notification_t, list);
+    struct notification_t *notif = list_first_entry(&reg_task->m_notif_list, struct notification_t, list);
     if (notif == NULL)
     {
         mutex_unlock(&reg_task->m_notif_list_lock);
@@ -594,4 +673,57 @@ void reg_task_notify_all(struct reg_task_t *reg_task)
     mutex_lock(&reg_task->m_wait_queue_lock);
     wake_up_interruptible(&reg_task->m_wait_queue);
     mutex_unlock(&reg_task->m_wait_queue_lock);
+}
+
+void reg_task_get_data(struct st_reg_tasks *reg_tasks)
+{
+    if (!reg_tasks)
+    {
+        ERR("null params");
+        return;
+    }
+
+    reg_tasks->tasks_count = 0;
+
+    // нужно пройти по всему списку задач и скопировать информацию о них в структуру
+    struct reg_task_t *entr = NULL;
+    mutex_lock(&g_reg_task_lock);
+    list_for_each_entry(entr, &g_reg_task_list, list)
+    {
+        if (reg_tasks->tasks_count == MAX_PROCESSES)
+        {
+            mutex_unlock(&g_reg_task_lock);
+            INF("Too much processes in global list");
+            return;
+        }
+
+        // собираем информацию о количестве клиентов и серверов
+        reg_tasks->tasks[reg_tasks->tasks_count].pid = entr->m_task_p->pid;
+        reg_tasks->tasks[reg_tasks->tasks_count].clients_count = 0; // atomic_read(&entr->m_num_of_clients);
+        reg_tasks->tasks[reg_tasks->tasks_count].servers_count = 0; // atomic_read(&entr->m_num_of_servers);
+
+        // собираем информацию о каждом сервере
+        struct server_t *srv_entr = NULL;
+        list_for_each_entry(srv_entr, &entr->m_servers, list)
+        {
+            server_get_data(srv_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
+                                           .servers[reg_tasks->tasks[reg_tasks->tasks_count].servers_count]);
+
+            reg_tasks->tasks[reg_tasks->tasks_count].servers_count++;
+        }
+
+        // собираем информацию о каждом клиенте
+        struct client_t *cli_entr = NULL;
+        list_for_each_entry(cli_entr, &entr->m_clients, list)
+        {
+            client_get_data(cli_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
+                                           .clients[reg_tasks->tasks[reg_tasks->tasks_count].clients_count]);
+
+            reg_tasks->tasks[reg_tasks->tasks_count].clients_count++;
+        }
+
+        // увеличиваем количество записанных задач
+        reg_tasks->tasks_count++;
+    }
+    mutex_unlock(&g_reg_task_lock);
 }

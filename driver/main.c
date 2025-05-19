@@ -24,7 +24,6 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
-#include <linux/errno.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Bogdan");
@@ -77,10 +76,20 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     {
         // регистрация нового сервера
     case IOCTL_REGISTER_SERVER:
+
+        INF("REGISTER_SERVER");
+
+        // проверяем возможность регистрации сервера в процессе
+        if (!reg_task_can_add_server(reg_task))
+        {
+            ERR("cannot add server to PID");
+            return -ENOSPC;
+        }
+
         // копируем имя из userspace
         if (copy_from_user(&reg, (void __user *)arg, sizeof(reg)))
         {
-            ERR("REGISTER_SERVER: copy_from_user failed\n");
+            ERR("copy_from_user failed\n");
             return -EFAULT;
         }
 
@@ -88,7 +97,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         server = find_server_by_name(reg.name);
         if (server)
         {
-            ERR("REGISTER_SERVER: server already exists: %d:%s", server->m_id, server->m_name);
+            ERR("server already exists: %d:%s", server->m_id, server->m_name);
             return -EEXIST;
         }
 
@@ -100,7 +109,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         // отправляем id обратно в userspace
         if (copy_to_user((void __user *)arg, &reg, sizeof(reg)))
         {
-            ERR("REGISTER_SERVER: cant sand back server's id: %d:%s", server->m_id, server->m_name);
+            ERR("cant sand back server's id: %d:%s", server->m_id, server->m_name);
             return -EFAULT;
         }
 
@@ -114,12 +123,21 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             break;
         }
 
-        INF("REGISTER_SERVER: New server is registered: (ID:%d) (NAME:%s) (PID:%d)", server->m_id, server->m_name,
+        INF("New server is registered: (ID:%d) (NAME:%s) (PID:%d)", server->m_id, server->m_name,
             server->m_task_p->m_reg_task->m_task_p->pid);
         break;
 
         // регистрация нового клиента
     case IOCTL_REGISTER_CLIENT:
+
+        INF("IOCTL_REGISTER_CLIENT");
+
+        // проверяем возможность регистрации клиента в процессе
+        if (!reg_task_can_add_client(reg_task))
+        {
+            ERR("cannot add client to PID");
+            return -ENOSPC;
+        }
 
         // создали новго клиента
         client = client_create();
@@ -425,6 +443,13 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         break;
 
+    case IOCTL_REGISTER_MONITOR:
+
+        INF("IOCTL_REGISTER_MONITOR");
+        return reg_task_set_monitor(reg_task);
+
+        break;
+
     default:
         INF("Unknown ioctl command: 0x%x", cmd);
         return -ENOTTY;
@@ -581,6 +606,14 @@ found:
 static int ipc_open(struct inode *inode, struct file *filp)
 {
     INF("=== new open request ===");
+
+    // проверка на возможность регистрации процесса
+    if (!reg_task_can_add_task())
+    {
+        ERR("Not enough space for new task");
+        return -ENOSPC;
+    }
+
     struct reg_task_t *reg_task = reg_task_create();
 
     if (!reg_task)
@@ -626,6 +659,37 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
         ERR("There is no reg_task in private_data");
         return -ENOENT;
     }
+    size_t size = 0;
+
+    // если это монитор, то нужно вернуть информацию о драйвере
+    if (reg_task_is_monitor(reg_task))
+    {
+        INF("Request from monitor process");
+        size = sizeof(struct st_reg_tasks);
+
+        if (count < size)
+        {
+            ERR("Not enough space");
+            return -EMSGSIZE;
+        }
+
+        struct st_reg_tasks *reg_tasks = kmalloc(size, GFP_KERNEL);
+        reg_task_get_data(reg_tasks);
+
+        // копируем данные в user space
+        if (copy_to_user(buf, reg_tasks, size))
+        {
+            ERR("copy_to_user error");
+            kfree(reg_tasks);
+            return -EFAULT;
+        }
+
+        kfree(reg_tasks);
+        return size;
+    }
+
+    // иначе обрабатываем получение уведомления
+    INF("Request from general process");
 
     // печать размер очереди уведомлений
     int notif_count = reg_task_get_notif_count(reg_task);
@@ -633,7 +697,6 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
 
     // структура уведомления
     struct notification_t *notif;
-    ssize_t size = 0;
 
     // получаем уведомление
     notif = reg_task_get_notification(reg_task);
@@ -649,7 +712,7 @@ static ssize_t ipc_read(struct file *filp, char __user *buf, size_t count, loff_
     // сравниваем размер, получаемого сообщения
     if (size > count)
     {
-        ERR("Message to long");
+        ERR("Not enough space");
         return -EMSGSIZE;
     }
 

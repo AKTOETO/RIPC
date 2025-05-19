@@ -27,10 +27,10 @@ namespace ripc
     // --- Константы библиотеки ---
     namespace DEFAULTS
     {
-        constexpr int MAX_SERVERS = 16;
+        constexpr int MAX_SERVERS = MAX_SERVERS_PER_PID;
         constexpr int MAX_SERVERS_MAPPING = 16;
         constexpr int MAX_SERVERS_CONNECTIONS = 16;
-        constexpr int MAX_CLIENTS = 128;
+        constexpr int MAX_CLIENTS = MAX_CLIENTS_PER_PID;
     };
 
 } // namespace ripc

@@ -1,10 +1,10 @@
 #include "client.h"
-#include "err.h"
 #include "connection.h"
+#include "err.h"
 #include "task.h"
 
-#include <linux/mm.h>
 #include "id.h"
+#include <linux/mm.h>
 
 // Список соединений и его блокировка
 LIST_HEAD(g_clients_list);
@@ -46,8 +46,7 @@ void client_add_task(struct client_t *cli, struct clients_list_t *task)
     // то нельзя его переподключить
     if (cli->m_task_p)
     {
-        ERR("Client already connected to task (PID:%d)",
-            cli->m_task_p->m_reg_task->m_task_p->pid);
+        ERR("Client already connected to task (PID:%d)", cli->m_task_p->m_reg_task->m_task_p->pid);
         return;
     }
 
@@ -95,9 +94,7 @@ void client_destroy(struct client_t *cli)
     kfree(cli);
 }
 
-void client_add_connection(
-    struct client_t *cli,
-    struct connection_t *con)
+void client_add_connection(struct client_t *cli, struct connection_t *con)
 {
     if (!cli || !con)
     {
@@ -164,8 +161,7 @@ struct client_t *find_client_by_id_pid(int id, pid_t pid)
         if (/*client->m_task_p->m_reg_task->m_task_p->pid == pid &&*/
             client->m_id == id)
         {
-            INF("FOUND client (ID:%d)(PID:%d)",
-                client->m_id, client->m_task_p->m_reg_task->m_task_p->pid);
+            INF("FOUND client (ID:%d)(PID:%d)", client->m_id, client->m_task_p->m_reg_task->m_task_p->pid);
             mutex_unlock(&g_clients_lock);
             // Нашли совпадение - сохраняем результат
             return client;
@@ -176,6 +172,21 @@ struct client_t *find_client_by_id_pid(int id, pid_t pid)
     return NULL;
 }
 
+void client_get_data(struct client_t *cli, struct st_client *dest)
+{
+    if (!cli || !dest)
+    {
+        ERR("Inval param");
+        return;
+    }
+
+    dest->id = cli->m_id;
+    if (cli->m_conn_p)
+        dest->srv_id = cli->m_conn_p->m_server_p->m_id;
+    else
+        dest->srv_id = -1;
+}
+
 /**
  * Операции над глобальным списком клиентов
  */
@@ -184,6 +195,5 @@ struct client_t *find_client_by_id_pid(int id, pid_t pid)
 void delete_client_list()
 {
     struct client_t *cl, *temp;
-    list_for_each_entry_safe(cl, temp, &g_clients_list, list)
-        client_destroy(cl);
+    list_for_each_entry_safe(cl, temp, &g_clients_list, list) client_destroy(cl);
 }

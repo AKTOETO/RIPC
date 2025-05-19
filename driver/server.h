@@ -79,6 +79,9 @@ struct serv_conn_list_t *server_find_conn_by_sub_mem_id(
 struct serv_conn_list_t *server_find_conn(
     struct server_t *srv, struct connection_t *con);
 
+// получение информации о сервере
+void server_get_data(struct server_t* srv, struct st_server* dest);
+
 /**
  * Операции над глобальным списком серверов
  */

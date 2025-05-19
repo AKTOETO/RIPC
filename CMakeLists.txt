@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.0)
 
-project(RIPC_Project LANGUAGES CXX)
+project(RIPC_Project LANGUAGES CXX C)
 
 # Устанавливаем стандарт C++ 
 set(CMAKE_CXX_STANDARD 17)
@@ -13,11 +13,13 @@ enable_testing()
 include(CTest)
 
 # --- Включение Подкаталогов ---
-# Сначала драйвер (если user-space от него зависит, хотя обычно нет)
+# драйвер
 #add_subdirectory(driver)
-# Затем user-space библиотека
+# утилита мониторинга ripcctl
+add_subdirectory(ripcctl)
+# user-space библиотека
 add_subdirectory(libripc)
-# Затем примеры
+# примеры
 add_subdirectory(examples)
 # Тесты
 add_subdirectory(tests)

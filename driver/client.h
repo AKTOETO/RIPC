@@ -2,6 +2,7 @@
 #define CLIENT_H
 #include "id.h"
 #include "connection.h"
+#include "ripc.h"
 
 #include <linux/list.h>
 #include <linux/sched.h>
@@ -45,6 +46,9 @@ struct client_t *find_client_by_id(int id);
 
 // поиск клиента по id и pid
 struct client_t *find_client_by_id_pid(int id, pid_t pid);
+
+// получение информации о клиенте
+void client_get_data(struct client_t* cli, struct st_client* dest);
 
 /**
  * Операции над глобальным списком клиентов

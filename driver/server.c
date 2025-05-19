@@ -1,6 +1,7 @@
 #include "server.h"
 #include "client.h"
 #include "err.h"
+#include "ripc.h"
 #include "shm.h"
 #include "task.h"
 
@@ -410,6 +411,39 @@ struct serv_conn_list_t *server_find_conn(struct server_t *srv, struct connectio
     mutex_unlock(&srv->m_con_list_lock);
     INF("Connection not found in server (ID: %d)(NAME: %s)", srv->m_id, srv->m_name);
     return NULL;
+}
+
+void server_get_data(struct server_t *srv, struct st_server *dest)
+{
+    if (!srv || !dest)
+    {
+        ERR("Inval param");
+        return;
+    }
+
+    dest->id = srv->m_id;
+    strcpy(srv->m_name, dest->name);
+    dest->conn_count = 0;
+
+    // соединение с клиентом и памятью
+    struct serv_conn_list_t *conn = NULL;
+
+    mutex_lock(&srv->m_con_list_lock);
+    // Итерируемся по списку подключений
+    list_for_each_entry(conn, &srv->connection_list.list, list)
+    {
+        if(dest->conn_count == MAX_CLIENTS_PER_SERVER)
+        {
+            INF("Too much clients per server in server (NAME: %s)", srv->m_name);
+            mutex_unlock(&srv->m_con_list_lock);
+            return;
+        }
+
+        // копируем данные о соединениях
+        dest->conn_ids[dest->conn_count] = conn->conn->m_client_p->m_id;
+        dest->conn_count++;
+    }
+    mutex_unlock(&srv->m_con_list_lock);
 }
 
 /**
