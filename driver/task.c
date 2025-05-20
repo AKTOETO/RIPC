@@ -719,20 +719,20 @@ void reg_task_get_data(struct st_reg_tasks *reg_tasks)
         cur_task->pid = 0;
 
         // собираем информацию о каждом сервере
-        struct server_t *srv_entr = NULL;
+        struct servers_list_t *srv_entr = NULL;
         list_for_each_entry(srv_entr, &entr->m_servers, list)
         {
-            if (!srv_entr)
+            if (!srv_entr || !srv_entr->m_server)
             {
                 ERR("NULL server entry!!!");
                 mutex_unlock(&g_reg_task_lock);
                 return;
             }
-            INF("Got a new server %d'%s' in task PID: %d", srv_entr->m_id, srv_entr->m_name, entr->m_task_p->pid);
+            INF("Got a new server %d'%s' in task PID: %d", srv_entr->m_server->m_id, srv_entr->m_server->m_name, entr->m_task_p->pid);
 
             mutex_unlock(&g_reg_task_lock);
 
-            server_get_data(srv_entr, &cur_task->servers[cur_task->servers_count]);
+            server_get_data(srv_entr->m_server, &cur_task->servers[cur_task->servers_count]);
             cur_task->servers_count++;
 
             mutex_lock(&g_reg_task_lock);
@@ -740,19 +740,19 @@ void reg_task_get_data(struct st_reg_tasks *reg_tasks)
         }
 
         // собираем информацию о каждом клиенте
-        struct client_t *cli_entr = NULL;
+        struct clients_list_t *cli_entr = NULL;
         list_for_each_entry(cli_entr, &entr->m_clients, list)
         {
-            if (!cli_entr)
+            if (!cli_entr || !cli_entr->m_client)
             {
                 ERR("NULL client entry!!!");
                 mutex_unlock(&g_reg_task_lock);
                 return;
             }
-            INF("Got a new client %d in task PID: %d", cli_entr->m_id, entr->m_task_p->pid);
+            INF("Got a new client %d in task PID: %d", cli_entr->m_client->m_id, entr->m_task_p->pid);
 
             mutex_unlock(&g_reg_task_lock);
-            client_get_data(cli_entr, &cur_task->clients[cur_task->clients_count]);
+            client_get_data(cli_entr->m_client, &cur_task->clients[cur_task->clients_count]);
             // client_get_data(cli_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
             //                                .clients[reg_tasks->tasks[reg_tasks->tasks_count].clients_count]);
 
