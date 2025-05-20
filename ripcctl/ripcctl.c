@@ -28,53 +28,62 @@ void print_driver_state(const struct st_reg_tasks *state)
         const struct st_task *task = &state->tasks[i];
         printf("Task PID: %d\n", task->pid);
 
-        if (task->servers_count > 0)
+        if (task->pid == getpid())
         {
-            printf("  Servers (%d):\n", task->servers_count);
-            for (int j = 0; j < task->servers_count && j < MAX_SERVERS_PER_PID; ++j)
-            {
-                const struct st_server *server = &task->servers[j];
-                printf("    Server ID: %d, Name: \"%.*s\"\n", server->id, MAX_SERVER_NAME - 1, server->name);
-                if (server->conn_count > 0)
-                {
-                    printf("      Connected Client IDs (%d): ", server->conn_count);
-                    for (int k = 0; k < server->conn_count && k < MAX_CLIENTS_PER_SERVER; ++k)
-                    {
-                        printf("%d ", server->conn_ids[k]);
-                    }
-                    printf("\n");
-                }
-                else
-                {
-                    printf("      No connected clients.\n");
-                }
-            }
-        }
-        else
-        {
-            printf("  No servers registered by this task.\n");
+            printf("It is me. Monitor\n");
         }
 
-        if (task->clients_count > 0)
-        {
-            printf("  Clients (%d):\n", task->clients_count);
-            for (int j = 0; j < task->clients_count && j < MAX_CLIENTS_PER_PID; ++j)
-            {
-                const struct st_client *client = &task->clients[j];
-                printf("    Client ID: %d", client->id);
-                if (IS_ID_VALID(client->srv_id))
-                {
-                    printf(" (Connected to Server ID: %d)\n", client->srv_id);
-                }
-                else
-                {
-                    printf(" (Not connected or srv_id N/A)\n");
-                }
-            }
-        }
         else
         {
-            printf("  No clients registered by this task.\n");
+
+            if (task->servers_count > 0)
+            {
+                printf("  Servers (%d):\n", task->servers_count);
+                for (int j = 0; j < task->servers_count && j < MAX_SERVERS_PER_PID; ++j)
+                {
+                    const struct st_server *server = &task->servers[j];
+                    printf("    Server ID: %d, Name: \"%.*s\"\n", server->id, MAX_SERVER_NAME - 1, server->name);
+                    if (server->conn_count > 0)
+                    {
+                        printf("      Connected Client IDs (%d): ", server->conn_count);
+                        for (int k = 0; k < server->conn_count && k < MAX_CLIENTS_PER_SERVER; ++k)
+                        {
+                            printf("%d ", server->conn_ids[k]);
+                        }
+                        printf("\n");
+                    }
+                    else
+                    {
+                        printf("      No connected clients.\n");
+                    }
+                }
+            }
+            else
+            {
+                printf("  No servers registered by this task.\n");
+            }
+
+            if (task->clients_count > 0)
+            {
+                printf("  Clients (%d):\n", task->clients_count);
+                for (int j = 0; j < task->clients_count && j < MAX_CLIENTS_PER_PID; ++j)
+                {
+                    const struct st_client *client = &task->clients[j];
+                    printf("    Client ID: %d", client->id);
+                    if (IS_ID_VALID(client->srv_id))
+                    {
+                        printf(" (Connected to Server ID: %d)\n", client->srv_id);
+                    }
+                    else
+                    {
+                        printf(" (Not connected or srv_id N/A)\n");
+                    }
+                }
+            }
+            else
+            {
+                printf("  No clients registered by this task.\n");
+            }
         }
         printf("---------------------------------\n");
     }
