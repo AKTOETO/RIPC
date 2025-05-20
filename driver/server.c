@@ -182,6 +182,15 @@ struct server_t *find_server_by_name(const char *name)
     struct server_t *srv = NULL;
     list_for_each_entry(srv, &g_servers_list, list)
     {
+        if(!srv)
+        {
+            ERR("NULL server entry");
+            mutex_unlock(&g_servers_lock);
+            return NULL;
+        }
+
+        INF("Got a new server '%s'", srv->m_name);
+
         if (strcmp(srv->m_name, name) == 0)
         {
             mutex_unlock(&g_servers_lock);
@@ -482,7 +491,7 @@ void server_get_data(struct server_t *srv, struct st_server *dest)
     mutex_lock(&srv->m_lock);
     
     dest->id = srv->m_id;
-    strncpy(srv->m_name, dest->name, MAX_SERVER_NAME);
+    strncpy(dest->name, srv->m_name, MAX_SERVER_NAME);
     dest->conn_count = 0;
     
     // соединение с клиентом и памятью
