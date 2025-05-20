@@ -1,4 +1,6 @@
 #include "task.h"
+#include "client.h"
+#include "err.h"
 #include "id_pack.h"
 #include "ripc.h"
 #include "server.h"
@@ -690,40 +692,78 @@ void reg_task_get_data(struct st_reg_tasks *reg_tasks)
     mutex_lock(&g_reg_task_lock);
     list_for_each_entry(entr, &g_reg_task_list, list)
     {
-        if (reg_tasks->tasks_count == MAX_PROCESSES)
+        if (!entr)
         {
+            ERR("NULL reg_task_entry");
             mutex_unlock(&g_reg_task_lock);
+            return;
+        }
+        INF("Got a new task PID: %d", entr->m_task_p->pid);
+
+        if (reg_tasks->tasks_count >= MAX_PROCESSES)
+        {
             INF("Too much processes in global list");
+            mutex_unlock(&g_reg_task_lock);
             return;
         }
 
+        struct st_task *cur_task = &reg_tasks->tasks[reg_tasks->tasks_count];
+
         // собираем информацию о количестве клиентов и серверов
-        reg_tasks->tasks[reg_tasks->tasks_count].pid = entr->m_task_p->pid;
-        reg_tasks->tasks[reg_tasks->tasks_count].clients_count = 0; // atomic_read(&entr->m_num_of_clients);
-        reg_tasks->tasks[reg_tasks->tasks_count].servers_count = 0; // atomic_read(&entr->m_num_of_servers);
+        // reg_tasks->tasks[reg_tasks->tasks_count].servers_count = 0; // atomic_read(&entr->m_num_of_servers);
+        // reg_tasks->tasks[reg_tasks->tasks_count].pid = entr->m_task_p->pid;
+        // reg_tasks->tasks[reg_tasks->tasks_count].clients_count = 0; // atomic_read(&entr->m_num_of_clients);
+
+        cur_task->servers_count = 0;
+        cur_task->clients_count = 0;
+        cur_task->pid = 0;
 
         // собираем информацию о каждом сервере
         struct server_t *srv_entr = NULL;
         list_for_each_entry(srv_entr, &entr->m_servers, list)
         {
-            server_get_data(srv_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
-                                           .servers[reg_tasks->tasks[reg_tasks->tasks_count].servers_count]);
+            if (!srv_entr)
+            {
+                ERR("NULL server entry!!!");
+                mutex_unlock(&g_reg_task_lock);
+                return;
+            }
+            INF("Got a new server %d'%s' in task PID: %d", srv_entr->m_id, srv_entr->m_name, entr->m_task_p->pid);
 
-            reg_tasks->tasks[reg_tasks->tasks_count].servers_count++;
+            mutex_unlock(&g_reg_task_lock);
+
+            server_get_data(srv_entr, &cur_task->servers[cur_task->servers_count]);
+            cur_task->servers_count++;
+
+            mutex_lock(&g_reg_task_lock);
+            // reg_tasks->tasks[reg_tasks->tasks_count].servers_count++;
         }
 
         // собираем информацию о каждом клиенте
         struct client_t *cli_entr = NULL;
         list_for_each_entry(cli_entr, &entr->m_clients, list)
         {
-            client_get_data(cli_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
-                                           .clients[reg_tasks->tasks[reg_tasks->tasks_count].clients_count]);
+            if (!cli_entr)
+            {
+                ERR("NULL client entry!!!");
+                mutex_unlock(&g_reg_task_lock);
+                return;
+            }
+            INF("Got a new client %d in task PID: %d", cli_entr->m_id, entr->m_task_p->pid);
 
-            reg_tasks->tasks[reg_tasks->tasks_count].clients_count++;
+            mutex_unlock(&g_reg_task_lock);
+            client_get_data(cli_entr, &cur_task->clients[cur_task->clients_count]);
+            // client_get_data(cli_entr, &reg_tasks->tasks[reg_tasks->tasks_count]
+            //                                .clients[reg_tasks->tasks[reg_tasks->tasks_count].clients_count]);
+
+            cur_task->clients_count++;
+            // reg_tasks->tasks[reg_tasks->tasks_count].clients_count++;
+            mutex_lock(&g_reg_task_lock);
         }
 
         // увеличиваем количество записанных задач
         reg_tasks->tasks_count++;
     }
+    INF("Exiting collection data function");
     mutex_unlock(&g_reg_task_lock);
 }

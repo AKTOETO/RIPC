@@ -180,8 +180,10 @@ void client_get_data(struct client_t *cli, struct st_client *dest)
         return;
     }
 
+    INF("Getting data from client");
+
     dest->id = cli->m_id;
-    if (cli->m_conn_p)
+    if (cli->m_conn_p && cli->m_conn_p->m_server_p)
         dest->srv_id = cli->m_conn_p->m_server_p->m_id;
     else
         dest->srv_id = -1;

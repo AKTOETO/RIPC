@@ -41,7 +41,7 @@ set(DRIVER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # Цель для сборки модуля (`make modules`)
 add_custom_target(ripc_driver_kmod ALL # ALL - собирать по умолчанию
     # Команда: запустить make в KERNEL_BUILD_DIR с M=DRIVER_SOURCE_DIR
-    COMMAND ${CMAKE_COMMAND} -E env  $(MAKE) -C "${KERNEL_BUILD_DIR}" M="${DRIVER_SOURCE_DIR}" modules
+    COMMAND ${CMAKE_COMMAND} -E env  $(MAKE) modules
     # Указываем рабочий каталог (где лежит Makefile драйвера)
     WORKING_DIRECTORY ${DRIVER_SOURCE_DIR}
     # Указываем ожидаемый результат (файл .ko в текущем каталоге)
@@ -56,7 +56,7 @@ add_custom_target(ripc_driver_kmod ALL # ALL - собирать по умолч�
 
 # Цель для очистки модуля (`make clean`)
 add_custom_target(ripc_driver_clean
-    COMMAND ${CMAKE_COMMAND} -E env  $(MAKE) -C "${KERNEL_BUILD_DIR}" M="${DRIVER_SOURCE_DIR}" clean
+    COMMAND ${CMAKE_COMMAND} -E env  $(MAKE) clean
     WORKING_DIRECTORY ${DRIVER_SOURCE_DIR}
     COMMENT "[Driver] Cleaning kernel module"
     VERBATIM

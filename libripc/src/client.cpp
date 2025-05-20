@@ -186,19 +186,19 @@ namespace ripc
     bool Client::isInitialized() const
     {
         if (!m_initialized)
-            LOG_INFO("Client (ID: %d) is not initialized");
+            LOG_INFO("Client (ID: %d) is not initialized", m_client_id);
         return m_initialized;
     }
     bool Client::isConnected() const
     {
         if (m_connected_server_name.empty())
-            LOG_INFO("Client (ID: %d) is not connected");
+            LOG_INFO("Client (ID: %d) is not connected", m_client_id);
         return !m_connected_server_name.empty();
     }
     bool Client::isMapped() const
     {
         if (!m_sub_mem.m_is_mapped)
-            LOG_INFO("Client`s (ID: %d) memory is not mapped");
+            LOG_INFO("Client`s (ID: %d) memory is not mapped", m_client_id);
         return m_sub_mem.m_is_mapped;
     }
 

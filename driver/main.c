@@ -779,6 +779,7 @@ static char *devnode(const struct device *dev, umode_t *mode)
 
 static int __init ipc_init(void)
 {
+    INF("=== RIPC Driver loading ===");
     int result;
 
     // Выделение диапазона устройств
