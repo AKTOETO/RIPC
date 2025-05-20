@@ -716,7 +716,7 @@ void reg_task_get_data(struct st_reg_tasks *reg_tasks)
 
         cur_task->servers_count = 0;
         cur_task->clients_count = 0;
-        cur_task->pid = 0;
+        cur_task->pid = entr->m_task_p->pid;
 
         // собираем информацию о каждом сервере
         struct servers_list_t *srv_entr = NULL;

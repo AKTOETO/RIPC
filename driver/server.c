@@ -492,7 +492,10 @@ void server_get_data(struct server_t *srv, struct st_server *dest)
     
     dest->id = srv->m_id;
     strncpy(dest->name, srv->m_name, MAX_SERVER_NAME);
+    dest->name[MAX_SERVER_NAME-1] = '\0';
     dest->conn_count = 0;
+
+    INF("adding server (ID:%d)(NAME:'%s')", dest->id, dest->name);
     
     // соединение с клиентом и памятью
     struct serv_conn_list_t *conn = NULL;
