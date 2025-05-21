@@ -1,23 +1,18 @@
-#include "ripc/ripc.hpp"
-#include <gtest/gtest.h>
+#include "../tests.hpp"
+
+class ConnManip : public RipcTest{};
 
 // Попытка подключения клиента к несуществующему серверу
-TEST(ConnManip, NotSucClientConnToServer)
+TEST_F(ConnManip, NotSucClientConnToServer)
 {
-    ripc::shutdown();
-    ripc::initialize();
-
     auto cl = ripc::createClient();
     ASSERT_NE(cl, nullptr);
     ASSERT_EQ(cl->connect("NotSucClientConnToServer"), false);
 }
 
 // Подключение клиента к существующему серверу
-TEST(ConnManip, SucClientConnToServer)
+TEST_F(ConnManip, SucClientConnToServer)
 {
-    ripc::shutdown();
-    ripc::initialize();
-    
     auto cl = ripc::createClient();
     auto sr = ripc::createServer("SucClientConnToServer");
     ASSERT_NE(cl, nullptr);
@@ -26,11 +21,8 @@ TEST(ConnManip, SucClientConnToServer)
 }
 
 // Подключение клиентов к существующему серверу
-TEST(ConnManip, MultipleClientsConnect)
+TEST_F(ConnManip, MultipleClientsConnect)
 {
-    ripc::shutdown();
-    ripc::initialize();
-    
     auto cl1 = ripc::createClient();
     auto cl2 = ripc::createClient();
     auto cl3 = ripc::createClient();
@@ -45,11 +37,8 @@ TEST(ConnManip, MultipleClientsConnect)
 }
 
 // Подключение клиента к разным существующим серверам
-TEST(ConnManip, MultipleServerConnection)
-{
-    ripc::shutdown();
-    ripc::initialize();
-    
+TEST_F(ConnManip, MultipleServerConnection)
+{    
     auto cl = ripc::createClient();
     auto sr1 = ripc::createServer("1:MultipleServerConnection");
     auto sr2 = ripc::createServer("2:MultipleServerConnection");
@@ -63,11 +52,8 @@ TEST(ConnManip, MultipleServerConnection)
 }
 
 // Корректный разрыв соединения со стороны клиента
-TEST(ConnManip, ClientDisconnect)
-{
-    ripc::shutdown();
-    ripc::initialize();
-    
+TEST_F(ConnManip, ClientDisconnect)
+{    
     auto cl = ripc::createClient();
     auto sr = ripc::createServer("ClientDisconnect");
     ASSERT_NE(cl, nullptr);
@@ -78,11 +64,8 @@ TEST(ConnManip, ClientDisconnect)
 }
 
 // Корректный разрыв соединения со стороны сервера
-TEST(ConnManip, ServerDisconnect)
-{
-    ripc::shutdown();
-    ripc::initialize();
-    
+TEST_F(ConnManip, ServerDisconnect)
+{    
     auto cl = ripc::createClient();
     auto sr = ripc::createServer("ClientDisconnect");
     ASSERT_NE(cl, nullptr);

@@ -11,6 +11,7 @@ CMakeUserPresets.json
 *.order
 *.tmp*
 c.bash
+o.sh
 out.txt
 
 # CTest

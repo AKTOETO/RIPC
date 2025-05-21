@@ -1,5 +1,5 @@
-#include "ripc/ripc.hpp"
-#include <gtest/gtest.h>
+#include "../tests.hpp"
+
 
 // тестирование возможность подключения к драйверу
 TEST(Connection, SuccessfullConnection)
@@ -29,7 +29,7 @@ TEST(Connection, UseAfterConnection)
     ASSERT_EQ(ripc::shutdown(), 1) << "Could not disconnect from driver";
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     // чтобы логов не было из библиотеки
     ripc::setLogLevel(ripc::LogLevel::NONE);

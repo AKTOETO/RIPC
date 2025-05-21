@@ -1,25 +1,12 @@
-#include "ripc/ripc.hpp"
 #include <chrono>
 #include <fstream>
 #include <future>
 #include <gtest/gtest.h>
+#include "../tests.hpp"
 
-class RipcTest : public ::testing::Test
-{
-  protected:
-    void SetUp() override
-    {
-        ripc::shutdown(); // Гарантированная очистка перед каждым тестом
-        ripc::initialize();
-    }
+class DataTransm : public RipcTest{};
 
-    void TearDown() override
-    {
-        ripc::shutdown(); // Корректное завершение после каждого теста
-    }
-};
-
-TEST_F(RipcTest, ClientToServer)
+TEST_F(DataTransm, ClientToServer)
 {
     auto cl = ripc::createClient();
     auto srv = ripc::createServer("ClientToServer");
@@ -71,7 +58,7 @@ TEST_F(RipcTest, ClientToServer)
     ASSERT_TRUE(callback_future.get()) << "Data validation failed";
 }
 
-TEST_F(RipcTest, ServerToClient) {
+TEST_F(DataTransm, ServerToClient) {
     auto cl = ripc::createClient();
     auto srv = ripc::createServer("ServerToClient");
 
