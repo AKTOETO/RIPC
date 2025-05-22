@@ -151,7 +151,7 @@ namespace ripc
         size_t i = 0;
         for (;; i++, pos++)
         {
-            //LOG_INFO("cur char[%i]: %c = %i", i, *pos, int(*pos))
+            // LOG_INFO("cur char[%i]: %c = %i", i, *pos, int(*pos))
             if ((*pos) == ch)
             {
                 return pos;
@@ -169,17 +169,26 @@ namespace ripc
         CHECK_ADDR_R(nullptr)
         CHECK_OFFSET_R(nullptr)
 
-        //LOG_INFO("finding delims");
-        for (size_t i = 0; i < len; i++)
+        // LOG_INFO("finding delims");
+        char *pos = static_cast<char *>(m_addr) + offset;
+        char *end_b = end();
+        size_t i = 0;
+        for (;; i++, pos++)
         {
-            //LOG_INFO("Delim: %i = '%c'", int(ch[i]), ch[i]);
-            char *pos = find(offset, ch[i]);
-
-            if (pos != end())
+            // LOG_INFO("cur char[%i]: %c = %i", i, *pos, int(*pos))
+            for (int ii = 0; ii < len; ii++)
             {
-                return pos;
+                if ((*pos) == ch[ii])
+                {
+                    return pos;
+                }
+                else if (pos == end_b)
+                {
+                    return end_b;
+                }
             }
         }
+
         return end();
     }
 
@@ -434,6 +443,7 @@ namespace ripc
 
     WriteBufferView::WriteBufferView(Memory &mem) : BufferView(mem), m_headers_initialized(false)
     {
+        LOG_INFO("Write buffer created");
     }
 
     bool WriteBufferView::addHeader(const char *data, size_t len)
@@ -480,6 +490,8 @@ namespace ripc
 
         // говрим, что первый заголовок записан
         m_headers_initialized = 1;
+
+        LOG_INFO("header '%.*s' added. Cur len: %d", len, data, m_current_size);
 
         return size == len;
     }
@@ -560,6 +572,8 @@ namespace ripc
             return false;
         }
         m_current_size += size;
+
+        LOG_INFO("Payload '%.*s' added. Cur len: %d", len, data, m_current_size);
 
         return finalizePayload();
     }
@@ -645,6 +659,7 @@ namespace ripc
 
     ReadBufferView::ReadBufferView(Memory &mem) : BufferView(mem)
     {
+        LOG_INFO("Read buffer created");
     }
 
     std::optional<std::string_view> ReadBufferView::getHeader()
@@ -689,7 +704,7 @@ namespace ripc
         if (*end == m_header_delimeter)
         {
             m_current_size += size + 1;
-            LOG_INFO("headers delimeter is found");
+            LOG_INFO("headers delimeter is found. Cur size: %d", m_current_size);
             return std::string_view(start, size);
         }
         // если это символ разделения заголовков и полезной части
@@ -699,17 +714,17 @@ namespace ripc
             m_current_size += size + 1;
             // finalizeHeader();
             m_headers_finalized = 1;
-            LOG_INFO("headers with payload delimeter is found");
+            LOG_INFO("headers with payload delimeter is found. Cur size: %d", m_current_size);
             return std::string_view(start, size);
         }
         // если это символ конца сообщения
         else if (*end == m_memory_finalizer)
         {
             m_current_size += size + 1;
-            //finalizePayload();
+            // finalizePayload();
             m_headers_finalized = 1;
             m_memory_finalized = 1;
-            LOG_INFO("end of memory is found");
+            LOG_INFO("end of memory is found. Cur size: %d", m_current_size);
             return std::nullopt;
         }
 
@@ -753,9 +768,9 @@ namespace ripc
             // размер выделенной области
             size_t size = end - start;
             m_current_size += size;
-            //finalizePayload();
+            // finalizePayload();
             m_memory_finalized = 1;
-            //LOG_INFO("Got payload: '%s'", std::string_view(start, size));
+            // LOG_INFO("Got payload: '%s'", std::string_view(start, size));
             return std::string_view(start, size);
         }
         LOG_ERR("Empty payload");

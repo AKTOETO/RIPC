@@ -83,7 +83,7 @@ namespace ripc
         static const char m_header_delimeter = '\t';//'\t';
 
         // разделитель между заголовками и полезной нагрузкой
-        static const char m_memory_delimeter = '\r';//'\r';
+        static const char m_memory_delimeter = '\n';//'\r';
 
         // символ окончания сообщения
         static const char m_memory_finalizer = '\0';//'\0'

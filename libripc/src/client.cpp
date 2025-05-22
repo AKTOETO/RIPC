@@ -141,7 +141,8 @@ namespace ripc
         wb.finalizePayload();
         // std::cout << "Client::call: sending message '" << wb << "' to: " << url <<
         // std::endl;
-        LOG_INFO("Client::call: sending message '%s' to: %s", wb.getStr().c_str(), url.getUrl().c_str());
+        LOG_INFO("Client::call: sending message '%.*s' to: %s", wb.getCurrentSize(), wb.getStr().c_str(),
+                 url.getUrl().c_str());
 
         // уведомляем драйвер
         u32 packed_id = pack_ids(m_client_id, 0);

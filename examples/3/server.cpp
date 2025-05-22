@@ -35,7 +35,7 @@ int main()
     srv->registerCallback(
         "/",
         [](const ripc::Url &url, ripc::ReadBufferView &rb) {
-            std::cout << "url: " << url.getUrl();
+            std::cout << "url: " << url.getUrl() << std::endl;
             // печать всех загловков
             std::optional<std::string_view> header;
             while ((header = rb.getHeader()))
