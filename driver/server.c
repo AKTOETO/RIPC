@@ -70,6 +70,7 @@ void server_add_task(struct server_t *srv, struct servers_list_t *task)
     if (srv->m_task_p)
     {
         ERR("Server already connected to task (PID:%d)", srv->m_task_p->m_reg_task->m_task_p->pid);
+        mutex_unlock(&srv->m_lock);
         return;
     }
 
@@ -123,7 +124,7 @@ void server_cleanup_connection(struct server_t *srv, struct serv_conn_list_t *sc
     }
 
     mutex_unlock(&srv->m_con_list_lock);
-    mutex_lock(&srv->m_lock);
+    mutex_unlock(&srv->m_lock);
 }
 
 void server_cleanup_connections(struct server_t *srv)
@@ -133,20 +134,10 @@ void server_cleanup_connections(struct server_t *srv)
     if (!srv)
         return;
     INF("Cleaning up connections for server %d ('%s')", srv->m_id, srv->m_name);
-
-    mutex_lock(&srv->m_lock);
-    mutex_lock(&srv->m_con_list_lock); // Блокируем список соединений сервера
     list_for_each_entry_safe(srv_conn_entry, tmp, &srv->connection_list.list, list)
     {
-
-        mutex_unlock(&srv->m_con_list_lock);
-        mutex_unlock(&srv->m_lock);
         server_cleanup_connection(srv, srv_conn_entry);
-        mutex_lock(&srv->m_lock);
-        mutex_lock(&srv->m_con_list_lock);
     }
-    mutex_unlock(&srv->m_con_list_lock); // Финальная разблокировка
-    mutex_unlock(&srv->m_lock);
     INF("Finished cleaning connections for server %d", srv->m_id);
 }
 
@@ -178,7 +169,7 @@ void server_destroy(struct server_t *srv)
 // поиск сервера по имени
 struct server_t *find_server_by_name(const char *name)
 {
-    mutex_unlock(&g_servers_lock);
+    mutex_lock(&g_servers_lock);
     struct server_t *srv = NULL;
     list_for_each_entry(srv, &g_servers_list, list)
     {
@@ -241,7 +232,6 @@ struct server_t *find_server_by_id_pid(int id, pid_t pid)
         mutex_unlock(&server->m_lock);
     }
     INF("Server not found with (ID:%d)(PID:%d)", id, pid);
-    mutex_unlock(&server->m_lock);
     mutex_unlock(&g_servers_lock);
 
     return NULL;
@@ -281,12 +271,10 @@ struct server_t *find_server_by_id(int id)
 
             mutex_unlock(&server->m_lock);
             mutex_unlock(&g_servers_lock);
-            // Нашли совпадение - сохраняем результат
             return server;
         }
         mutex_unlock(&server->m_lock);
     }
-    mutex_unlock(&server->m_lock);
     mutex_unlock(&g_servers_lock);
     INF("Server not found with (ID:%d)", id);
 

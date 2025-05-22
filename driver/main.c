@@ -240,7 +240,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         // отправка уведомления
-        if ((ret = notification_send(CLIENT, NEW_MESSAGE, conn)))
+        if ((ret = notification_send(CLIENT, NEW_MESSAGE, conn)) != 0)
         {
             ERR("sending notif failed");
         }
@@ -283,7 +283,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         }
 
-        if ((ret = notification_send(SERVER, NEW_MESSAGE, conn)))
+        if ((ret = notification_send(SERVER, NEW_MESSAGE, conn)) != 0)
         {
             ERR("sending notif failed");
         }
@@ -315,7 +315,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         // уведомляем сервер о разрыве соединения
-        if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)))
+        if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)) != 0)
         {
             ERR("sending notif failed");
         }
@@ -370,7 +370,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             return -ENOMEM;
         }
 
-        if ((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)))
+        if ((ret = notification_send(SERVER, REMOTE_DISCONNECT, conn)) != 0)
         {
             ERR("sending notif failed");
         }
@@ -405,7 +405,7 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
 
         // уведомляем сервер о разрыве соединения
-        if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)))
+        if ((ret = notification_send(CLIENT, REMOTE_DISCONNECT, conn)) != 0)
         {
             ERR("sending notif failed");
         }
@@ -523,7 +523,7 @@ static int ipc_mmap(struct file *file, struct vm_area_struct *vma)
         mutex_lock(&conn->m_server_p->m_lock);
 
         // отправка уведомления
-        if ((ret = notification_send(CLIENT, NEW_CONNECTION, conn)))
+        if ((ret = notification_send(CLIENT, NEW_CONNECTION, conn)) != 0)
         {
             ERR("notification sending failed");
         }
