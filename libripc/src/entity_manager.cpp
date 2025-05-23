@@ -1,7 +1,9 @@
 #include "ripc/logger.hpp"
 #include "ripc/entity_manager.hpp"
+#include "ripc/rest_client.hpp"
 #include "ripc/server.hpp"
 #include "ripc/client.hpp"
+#include "ripc/rest_client.hpp"
 #include "ripc/context.hpp" // Для вызова методов контекста
 #include "ripc.h"           // Для IOCTL и notification_data
 #include "id_pack.h"        // Для IS_ID_VALID
@@ -231,6 +233,54 @@ namespace ripc
         clients.emplace(new_id, std::move(new_client));
         // std::cout << "EntityManager: Client (ID: " << new_id << ") created." << std::endl;
         LOG_INFO("Client (ID: %d) created.", new_id);
+        return raw_ptr;
+    }
+
+    RESTClient* RipcEntityManager::createRestfulClient()
+    {
+        if (!is_initialized)
+        {
+            LOG_CRIT("Manager not initialized.");
+            return nullptr;
+        }
+        // throw std::logic_error("Manager not initialized.");
+        if (clients.size() >= max_clients)
+        {
+            LOG_ERR("Clients limit reached");
+            return nullptr;
+        }
+        // throw std::runtime_error("Client limit reached.");
+
+        auto new_client = std::unique_ptr<RESTClient>(new RESTClient(getContext()));
+        if (!new_client->init())
+        {
+            new_client.reset();
+            return nullptr;
+        }
+
+        int new_id = new_client->getId();
+        if (!IS_ID_VALID(new_id))
+        {
+            // Это не должно произойти, если init() отработал без исключений
+            // удаляем сервер
+            new_client.reset();
+            LOG_ERR("Client got invalid id");
+            return nullptr;
+            // throw std::logic_error("Client init returned invalid ID after success.");
+        }
+        if (clients.count(new_id))
+        {
+            // throw std::logic_error("Client ID collision detected: " + std::to_string(new_id));
+            new_client.reset();
+            LOG_ERR("Client ID collision detected: %d", new_id);
+            return nullptr;
+        }
+
+        RESTClient *raw_ptr = new_client.get();
+        std::lock_guard<std::mutex> lock(manager_mutex);
+        clients.emplace(new_id, std::move(new_client));
+        // std::cout << "EntityManager: Client (ID: " << new_id << ") created." << std::endl;
+        LOG_INFO("RESTClient (ID: %d) created.", new_id);
         return raw_ptr;
     }
 

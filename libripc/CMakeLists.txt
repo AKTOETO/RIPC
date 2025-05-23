@@ -1,5 +1,16 @@
 # CMake-файл для библиотеки libripc
 
+include(FetchContent)
+
+# Подключаем nlohmann/json
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3 # укажи нужную версию (или latest)
+)
+FetchContent_MakeAvailable(json)
+
+
 # Находим все исходные файлы (.cpp) в каталоге src/
 file(GLOB LIB_SOURCES src/*.cpp)
 
@@ -37,7 +48,8 @@ target_include_directories(ripc
 
 # Указываем зависимости библиотеки:
 # RipcEntityManager использует std::thread, поэтому нужна pthread.
-target_link_libraries(ripc PRIVATE pthread)
+target_link_libraries(ripc PRIVATE pthread nlohmann_json::nlohmann_json)
+target_link_libraries(ripc PUBLIC nlohmann_json::nlohmann_json)
 
 # Добавляем специфичные флаги компиляции для библиотеки
 # target_compile_options(ripc PRIVATE -O2)

@@ -23,8 +23,12 @@ namespace ripc
 
     Client *createClient()
     {
-        return RipcEntityManager::getInstance().createClient();
-        
+        return RipcEntityManager::getInstance().createClient();        
+    }
+
+    RESTClient *createRestfulClient()
+    {
+        return RipcEntityManager::getInstance().createRestfulClient();
     }
 
     bool deleteServer(int server_id)

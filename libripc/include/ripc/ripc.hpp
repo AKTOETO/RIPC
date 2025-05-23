@@ -2,6 +2,7 @@
 #define RIPC_API_HPP
 
 #include "logger.hpp"
+#include "ripc/rest_client.hpp"
 #include "types.hpp"
 #include "server.hpp"
 #include "client.hpp"
@@ -50,6 +51,13 @@ namespace ripc
      * @throws std::runtime_error если достигнут лимит клиентов или регистрация не удалась.
      */
     Client *createClient();
+
+    /**
+     * @brief Создание RESTfull клиента
+     * 
+     * @return Невладеющий указатель на созданный объект RESTClient
+     */
+    RESTClient *createRestfulClient();
 
     /**
      * @brief Удаляет экземпляр сервера по его ID ядра.

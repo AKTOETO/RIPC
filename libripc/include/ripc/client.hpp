@@ -1,14 +1,14 @@
 #ifndef RIPC_CLIENT_HPP
 #define RIPC_CLIENT_HPP
 
-#include "types.hpp" // Общие типы, notification_data
 #include "submem.hpp"
+#include "types.hpp" // Общие типы, notification_data
 #include "url.hpp"
 
 #include <functional>
+#include <stdexcept> // Для исключений
 #include <string>
 #include <vector>
-#include <stdexcept> // Для исключений
 
 namespace ripc
 {
@@ -18,7 +18,7 @@ namespace ripc
     // Класс, представляющий экземпляр клиента RIPC
     class Client
     {
-    private:
+      private:
         friend class RipcEntityManager;
 
         // Обработчик запросов
@@ -40,15 +40,12 @@ namespace ripc
         // Информация о разделяемой памяти
         Memory m_sub_mem;
 
-        // Приватный конструктор (вызывается только RipcEntityManager)
-        explicit Client(RipcContext &ctx);
-
         // Приватный метод инициализации (выполняет ioctl register)
         bool init();
 
         // Приватный метод для проверки состояния
-        //bool checkInitialized() const;
-        //bool checkMapped() const;
+        // bool checkInitialized() const;
+        // bool checkMapped() const;
 
         // Запрет копирования/присваивания
         Client(const Client &) = delete;
@@ -59,7 +56,8 @@ namespace ripc
         bool dispatchNewMessage(const notification_data &ntf);
         bool dispatchRemoteDisconnect(const notification_data &ntf);
 
-    public:
+      public:
+        explicit Client(RipcContext &ctx);
         ~Client();
 
         /// @brief Подключение к серверу

@@ -2,6 +2,7 @@
 #define RIPC_ENTITY_MANAGER_HPP
 
 #include "context.hpp" // Менеджер владеет контекстом
+#include "ripc/rest_client.hpp"
 #include "types.hpp"   // Для NotificationHandler и других общих типов
 #include <atomic>      // std::atomic<bool> для флага потока
 #include <map>         // Используем для карты обработчиков (enum -> handler)
@@ -103,6 +104,13 @@ namespace ripc
          * @throws std::logic_error если менеджер не инициализирован.
          */
         Client *createClient();
+
+        /**
+         * @brief Создает, инициализирует и регистрирует новый экземпляр Restfull клиента.
+         * Вызывает приватный конструктор и init() клиента.
+         * @return Невладеющий указатель на созданный объект RESTClient. Управление жизнью объекта остается у менеджера.
+         */
+        RESTClient* createRestfulClient();
 
         // --- Удаление сущностей ---
 
