@@ -1,29 +1,30 @@
-#include "ripc/logger.hpp"
 #include "ripc/entity_manager.hpp"
-#include "ripc/rest_client.hpp"
-#include "ripc/server.hpp"
+#include "id_pack.h" // Для IS_ID_VALID
+#include "ripc.h"    // Для IOCTL и notification_data
 #include "ripc/client.hpp"
-#include "ripc/rest_client.hpp"
 #include "ripc/context.hpp" // Для вызова методов контекста
-#include "ripc.h"           // Для IOCTL и notification_data
-#include "id_pack.h"        // Для IS_ID_VALID
-#include <iostream>
+#include "ripc/logger.hpp"
+#include "ripc/rest_client.hpp"
+#include "ripc/rest_server.hpp"
+#include "ripc/server.hpp"
 #include <algorithm> // std::find_if
+#include <cstring>   // strerror
+#include <iostream>
+#include <memory>
 #include <poll.h>
-#include <unistd.h>     // read, close
 #include <system_error> // std::system_error для потока
+#include <unistd.h>     // read, close
 #include <vector>       // Для временного буфера
-#include <cstring>      // strerror
 
 namespace ripc
 {
-#define CHECK_INIT                      \
-    {                                   \
-        if (!isInitialized())           \
-        {                               \
-            LOG_ERR("Not initialized"); \
-            return false;               \
-        }                               \
+#define CHECK_INIT                                                                                                     \
+    {                                                                                                                  \
+        if (!isInitialized())                                                                                          \
+        {                                                                                                              \
+            LOG_ERR("Not initialized");                                                                                \
+            return false;                                                                                              \
+        }                                                                                                              \
     }
     // --- Синглтон ---
     RipcEntityManager &RipcEntityManager::getInstance()
@@ -152,7 +153,7 @@ namespace ripc
         }
         // throw std::runtime_error("Server limit reached.");
 
-        auto new_server = std::unique_ptr<Server>(new Server(getContext(), name));
+        auto new_server = std::make_unique<Server>(getContext(), name);//std::unique_ptr<Server>(new Server(getContext(), name));
         if (!new_server->init())
         {
             new_server.reset();
@@ -180,6 +181,57 @@ namespace ripc
         }
 
         Server *raw_ptr = new_server.get();
+        // Вставляем в unordered_map, перемещая владение unique_ptr
+        std::lock_guard<std::mutex> lock(manager_mutex);
+        servers.emplace(new_id, std::move(new_server));
+        // std::cout << "EntityManager: Server '" << name << "' (ID: " << new_id << ") created." << std::endl;
+        LOG_INFO("Server '%s' (ID:%d) created", name.c_str(), new_id);
+        return raw_ptr;
+    }
+
+    RESTServer *RipcEntityManager::createRestfulServer(const std::string &name)
+    {
+        if (!is_initialized)
+        {
+            LOG_CRIT("Manager is not initialized");
+            return nullptr;
+        }
+        // throw std::logic_error("Manager not initialized.");
+        if (servers.size() >= max_servers)
+        {
+            LOG_ERR("Server limit reached");
+            return nullptr;
+        }
+        // throw std::runtime_error("Server limit reached.");
+
+        auto new_server = std::make_unique<RESTServer>(getContext(), name);//std::unique_ptr<Server>(new RESTServer(getContext(), name));
+        if (!new_server->init())
+        {
+            new_server.reset();
+            return nullptr;
+        }
+
+        int new_id = new_server->getId();
+        if (!IS_ID_VALID(new_id))
+        {
+            // throw std::logic_error("Server init returned invalid ID after success.");
+
+            // удаляем сервер
+            new_server.reset();
+            LOG_ERR("Server got invalid id");
+            return nullptr;
+        }
+        // Проверка на коллизию ID (маловероятно, но важно)
+        if (servers.count(new_id))
+        {
+            // throw std::logic_error("Server ID collision detected: " + std::to_string(new_id));
+            //  удаляем сервер
+            new_server.reset();
+            LOG_ERR("Server ID collision detected: %d", new_id);
+            return nullptr;
+        }
+
+        RESTServer *raw_ptr = new_server.get();
         // Вставляем в unordered_map, перемещая владение unique_ptr
         std::lock_guard<std::mutex> lock(manager_mutex);
         servers.emplace(new_id, std::move(new_server));
@@ -236,7 +288,7 @@ namespace ripc
         return raw_ptr;
     }
 
-    RESTClient* RipcEntityManager::createRestfulClient()
+    RESTClient *RipcEntityManager::createRestfulClient()
     {
         if (!is_initialized)
         {
@@ -436,8 +488,8 @@ namespace ripc
         // if (!IS_NTF_TYPE_VALID(ntf.m_type) || !IS_NTF_SEND_VALID(ntf.m_who_sends) || !IS_ID_VALID(ntf.m_reciver_id))
         if (!IS_NTF_DATA_VALID(ntf))
         {
-            LOG_ERR("Dispatcher: Invalid notification received (type=%d, sender=%d, receiver=%d)",
-                    ntf.m_type, ntf.m_who_sends, ntf.m_reciver_id);
+            LOG_ERR("Dispatcher: Invalid notification received (type=%d, sender=%d, receiver=%d)", ntf.m_type,
+                    ntf.m_who_sends, ntf.m_reciver_id);
 
             // std::cerr << "Dispatcher: Invalid notification received (type=" << ntf.m_type
             //           << ", sender=" << ntf.m_who_sends << ", receiver=" << ntf.m_reciver_id << ")" << std::endl;
@@ -558,15 +610,14 @@ namespace ripc
         catch (const std::exception &e)
         {
             // std::cerr << "[Listener Thread]: Failed to get device fd: " << e.what() << ". Stopping." << std::endl;
-            LOG_CRIT("[Listener Thread %d]: Failed to get device fd: %s. Stopping",
-                     std::this_thread::get_id(), e.what());
+            LOG_CRIT("[Listener Thread %d]: Failed to get device fd: %s. Stopping", std::this_thread::get_id(),
+                     e.what());
             listener_running.store(false);
             return false;
         }
         if (local_fd < 0)
         {
-            LOG_CRIT("[Listener Thread %d]: Failed to get device fd. Stopping",
-                     std::this_thread::get_id());
+            LOG_CRIT("[Listener Thread %d]: Failed to get device fd. Stopping", std::this_thread::get_id());
             // std::cerr << "[Listener Thread]: Failed to get device fd: " << << ". Stopping." << std::endl;
             listener_running.store(false);
             return false;
@@ -589,8 +640,7 @@ namespace ripc
             { // Ошибка poll
                 if (errno == EINTR)
                     continue;
-                LOG_CRIT("[Listener Thread %d]: poll failed Stopping: %s",
-                         std::this_thread::get_id(), strerror(errno));
+                LOG_CRIT("[Listener Thread %d]: poll failed Stopping: %s", std::this_thread::get_id(), strerror(errno));
                 // perror("[Listener Thread]: poll failed");
                 listener_running.store(false); // Ошибка, останавливаем поток
                 ret = false;
@@ -659,8 +709,7 @@ namespace ripc
         } // end while(listener_running)
 
         // std::cout << "[Listener Thread " << std::this_thread::get_id() << "]: Exiting." << std::endl;
-        LOG_INFO("[Listener Thread %d]: stopped",
-                 std::this_thread::get_id());
+        LOG_INFO("[Listener Thread %d]: stopped", std::this_thread::get_id());
         return ret;
     }
 

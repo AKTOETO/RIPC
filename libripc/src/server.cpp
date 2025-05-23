@@ -115,15 +115,6 @@ namespace ripc
         }
     }
 
-    // Приватные проверки
-    // void Server::checkInitialized() const
-    //{
-    //    if (!m_initialized)
-    //        throw std::logic_error("Server '" + m_name + "' (ID: " +
-    //                               std::to_string(m_server_id) + ") is not
-    //                               initialized.");
-    //}
-
     // --- Публичные методы ---
     int Server::getId() const
     {
@@ -267,15 +258,6 @@ namespace ripc
     bool Server::registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut &&out)
     {
         return registerCallback(std::move(url_pattern), std::move(UrlCallbackFull{in, out}));
-
-        // auto [it, inserted] = m_urls.try_emplace(std::move(url_pattern),
-        // std::move(UrlCallbackFull{in, out})); if (inserted)
-        //     std::cout << "Server::registerCallback: callback to '" << it->first <<
-        //     "' registered\n";
-        // else
-        //     std::cout << "Server::registerCallback: callback to '" << it->first <<
-        //     "' NOT registered\n";
-        // return inserted;
     }
 
     bool Server::disconnect(int id)
@@ -298,19 +280,10 @@ namespace ripc
         LOG_INFO("[Server %d Handler]: Received notification type %d from Client %d "
                  "SubMem id: %d)",
                  m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
-        // std::cout << "[Server " << m_server_id << " Handler] Received notification
-        // type " << ntf.m_type
-        //           << " from Client " << ntf.m_sender_id << " (SubMem id: " <<
-        //           ntf.m_sub_mem_id << ")" << std::endl;
 
         switch (ntf.m_type)
         {
         case NEW_CONNECTION:
-            // std::cout << "[Server " << m_server_id
-            //           << " Handler]: Received NEW_CONNECTION notification from Client
-            //           "
-            //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
-            //           << std::endl;
             LOG_INFO("[Server %d Handler]: Received NEW_CONNECTION from Client %d "
                      "SubMem id: %d)",
                      m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);
@@ -318,10 +291,6 @@ namespace ripc
             break;
 
         case NEW_MESSAGE:
-            // std::cout << "[Server " << m_server_id
-            //           << " Handler]: Received NEW_MESSAGE notification from Client "
-            //           << ntf.m_sender_id << " regarding SubMem " << ntf.m_sub_mem_id
-            //           << std::endl;
             LOG_INFO("[Server %d Handler]: Received NEW_MESSAGE from Client %d SubMem "
                      "id: %d)",
                      m_server_id, ntf.m_type, ntf.m_sender_id, ntf.m_sub_mem_id);

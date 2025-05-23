@@ -1,4 +1,5 @@
 #include "ripc/entity_manager.hpp"
+#include "ripc/rest_server.hpp"
 #include "ripc/ripc.hpp"
 
 namespace ripc
@@ -21,9 +22,13 @@ namespace ripc
         return RipcEntityManager::getInstance().createServer(name);
     }
 
+    RESTServer *createRestfulServer(const std::string &name)
+    {
+        return RipcEntityManager::getInstance().createRestfulServer(name);
+    }
     Client *createClient()
     {
-        return RipcEntityManager::getInstance().createClient();        
+        return RipcEntityManager::getInstance().createClient();
     }
 
     RESTClient *createRestfulClient()

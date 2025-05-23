@@ -4,10 +4,8 @@
 
 namespace ripc
 {
-    RESTClient::RESTClient(RipcContext &context)
-    :Client(context)
+    RESTClient::RESTClient(RipcContext &context) : Client(context)
     {
-
     }
     RESTClient::~RESTClient()
     {
@@ -18,9 +16,9 @@ namespace ripc
             url,
             [out](ripc::ReadBufferView &rb) {
                 auto data = rb.getPayload();
-                if (!data)
+                if (!data || data->size() <= 0)
                 {
-                    LOG_ERR("Where is no payload");
+                    LOG_INFO("Where is no payload");
                     return;
                 }
                 out(nlohmann::json::parse(*data));
@@ -29,11 +27,6 @@ namespace ripc
     };
     bool RESTClient::post(const Url &url, const nlohmann::json &json)
     {
-        return Client::call(url, nullptr, 
-            [&json](ripc::WriteBufferView &wb) 
-            {
-                 wb.setPayload(json.dump()); 
-            }
-        );
+        return Client::call(url, nullptr, [&json](ripc::WriteBufferView &wb) { wb.setPayload(json.dump()); });
     }
 } // namespace ripc

@@ -8,15 +8,14 @@ namespace ripc
 {
     class RipcContext;
     class RipcEntityManager;
-    
+
     // Клиент с RESTful интерфейсом
     class RESTClient : public Client
     {
         friend class RipcEntityManager;
 
-        explicit RESTClient(RipcContext &context);
-
       public:
+        explicit RESTClient(RipcContext &context);
         ~RESTClient();
         bool get(const Url &url, std::function<void(const nlohmann::json &)>);
         bool post(const Url &url, const nlohmann::json &obj);

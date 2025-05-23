@@ -3,6 +3,7 @@
 
 #include "context.hpp" // Менеджер владеет контекстом
 #include "ripc/rest_client.hpp"
+#include "ripc/rest_server.hpp"
 #include "types.hpp"   // Для NotificationHandler и других общих типов
 #include <atomic>      // std::atomic<bool> для флага потока
 #include <map>         // Используем для карты обработчиков (enum -> handler)
@@ -95,6 +96,13 @@ namespace ripc
          * @throws std::logic_error если менеджер не инициализирован.
          */
         Server *createServer(const std::string &name);
+
+        /**
+         * @brief Создает, инициализирует и регистрирует новый экземпляр Restfull сервера.
+         * Вызывает приватный конструктор и init() сервера.
+         * @return Невладеющий указатель на созданный объект RESTServer. Управление жизнью объекта остается у менеджера.
+         */
+        RESTServer* createRestfulServer(const std::string &name);
 
         /**
          * @brief Создает, инициализирует и регистрирует новый экземпляр клиента.

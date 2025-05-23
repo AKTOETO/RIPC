@@ -1,17 +1,17 @@
 #ifndef RIPC_SERVER_HPP
 #define RIPC_SERVER_HPP
 
-#include "types.hpp" // Общие типы, notification_data, структуры Info/Mapping
 #include "submem.hpp"
+#include "types.hpp" // Общие типы, notification_data, структуры Info/Mapping
 #include "url.hpp"
-#include <string>
-#include <vector>
-#include <stdexcept> // Для исключений
-#include <unordered_map>
-#include <map>
-#include <optional>
-#include <memory>
 #include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <stdexcept> // Для исключений
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace ripc
 {
@@ -22,15 +22,15 @@ namespace ripc
     // Класс, представляющий экземпляр сервера RIPC
     class Server
     {
-    private:
+      private:
         friend class RipcEntityManager;
 
         // Обработчик запросов на определенный url
-        using UrlCallbackIn = std::function<void(const Url&, ReadBufferView &)>;
+        using UrlCallbackIn = std::function<void(const Url &, ReadBufferView &)>;
         using UrlCallbackOut = std::function<void(WriteBufferView &)>;
         struct UrlCallbackFull
         {
-            UrlCallbackIn m_in;            
+            UrlCallbackIn m_in;
             UrlCallbackOut m_out;
         };
 
@@ -59,9 +59,6 @@ namespace ripc
         // список колбеков на url определенные
         std::map<UrlPattern, UrlCallbackFull> m_urls;
 
-        // Приватный конструктор
-        Server(RipcContext &ctx, const std::string &server_name);
-
         // Приватный метод инициализации (ioctl register)
         bool init();
 
@@ -71,7 +68,7 @@ namespace ripc
         const std::pair<const int, std::shared_ptr<Memory>> &findOrCreateSHM(int shm_id);
 
         // Приватный метод для проверки состояния
-        //void checkInitialized() const;
+        // void checkInitialized() const;
 
         // Запрет копирования/присваивания
         Server(const Server &) = delete;
@@ -86,7 +83,8 @@ namespace ripc
         // отключение клиента
         bool disconnectFromClient(std::shared_ptr<ConnectionInfo> con);
 
-    public:
+      public:
+        explicit Server(RipcContext &ctx, const std::string &server_name);
         ~Server();
 
         // --- Получение информации ---
@@ -97,7 +95,7 @@ namespace ripc
 
         // регистрация обработчика запросов на шаблонный url
         bool registerCallback(UrlPattern &&url_pattern, UrlCallbackFull &&callback);
-        bool registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut&& out);
+        bool registerCallback(UrlPattern &&url_pattern, UrlCallbackIn &&in, UrlCallbackOut &&out);
 
         // отключение от клиента
         bool disconnect(int id);

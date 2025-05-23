@@ -1,13 +1,13 @@
 #ifndef RIPC_API_HPP
 #define RIPC_API_HPP
 
+#include "client.hpp"
 #include "logger.hpp"
 #include "ripc/rest_client.hpp"
-#include "types.hpp"
+#include "ripc/rest_server.hpp"
 #include "server.hpp"
-#include "client.hpp"
+#include "types.hpp"
 #include <string>
-#include <cstddef>
 
 // --- Публичный интерфейс библиотеки RIPC ---
 
@@ -44,6 +44,12 @@ namespace ripc
      * @throws std::invalid_argument если имя некорректно.
      */
     Server *createServer(const std::string &name);
+    /**
+     * @brief Создает, инициализирует и регистрирует новый экземпляр Restfull сервера.
+     * Вызывает приватный конструктор и init() сервера.
+     * @return Невладеющий указатель на созданный объект RESTServer. Управление жизнью объекта остается у менеджера.
+     */
+    RESTServer *createRestfulServer(const std::string &name);
 
     /**
      * @brief Создает и регистрирует новый экземпляр клиента.
@@ -54,7 +60,7 @@ namespace ripc
 
     /**
      * @brief Создание RESTfull клиента
-     * 
+     *
      * @return Невладеющий указатель на созданный объект RESTClient
      */
     RESTClient *createRestfulClient();
