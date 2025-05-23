@@ -1,8 +1,8 @@
 # CMake-файл для тестового приложения test_app
-set(NAME test_app3)
+set(NAME exampl3)
 
-set(SNAME ${NAME}_server)
-set(CNAME ${NAME}_client)
+set(SNAME server_${NAME})
+set(CNAME client_${NAME})
 
 # Определяем исполняемый файл и его исходник
 add_executable(${SNAME} server.cpp)

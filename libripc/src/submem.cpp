@@ -667,14 +667,14 @@ namespace ripc
         if (m_memory_finalized)
         {
             // std::cerr << "BufferView Error: Message already finalized\n";
-            LOG_WARN("Message already finalized");
+            LOG_INFO("Message already finalized");
             return std::nullopt;
         }
         if (m_headers_finalized)
         {
             // std::cerr << "BufferView Error: Cannot add headers after payload section
             // started." << std::endl;
-            LOG_WARN("There is no more headers");
+            LOG_INFO("There is no more headers");
             return std::nullopt;
         }
         if (!m_mem.m_is_mapped)

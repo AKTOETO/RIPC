@@ -1,4 +1,5 @@
-#include "ripc/ripc.hpp"
+#include <ripc/ripc.hpp>
+#include <string_view>
 
 int main()
 {
@@ -10,16 +11,15 @@ int main()
     srv->registerCallback(
         "some/<string>/<int>",
         [](const ripc::Url &url, ripc::ReadBufferView &rb) {
-            std::cout << "url: " << url.getUrl() << std::endl;
+            std::cout << "SERVER> url: " << url.getUrl() << std::endl;
             // печать всех загловков
             std::optional<std::string_view> header;
             while ((header = rb.getHeader()))
             {
-                std::cout << "header: " << *header << std::endl;
+                std::cout << "SERVER> header: " << *header << std::endl;
             }
             // печать полезной нагрузки
-            auto payload = rb.getPayload();
-            if (payload)
+            if (auto payload = rb.getPayload())
                 std::cout << "SERVER> payload from client: " << *payload << std::endl;
         },
         [](ripc::WriteBufferView &wb) {
