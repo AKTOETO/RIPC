@@ -6,6 +6,7 @@ int main()
     ripc::initialize();
 
     auto cli = ripc::createRestfulClient();
+    cli->setBlockingMode(1);
     cli->connect("srv2");
 
     nlohmann::json j;
@@ -22,14 +23,17 @@ int main()
     // отправляем это все на сервер
     cli->post("some/url/1", j);
 
-    std::cin.get();
+    auto call = [](const nlohmann::json &json) {
+        static int i = 0;
+        std::cout << "CLIENT> " << i++ << " json from server : " << json.dump() << std::endl;
+        std::cout << "Client> " << json["url"].dump(4) << std::endl;
+    };
 
     // получаем что-то с сервера
-    cli->get("some/url/2", [](const nlohmann::json &json) {
-        std::cout << "CLIENT> json from server : " << json.dump(4) << std::endl;
-    });
-
-    std::cin.get();
+    for (int i = 0; i < 10; i++)
+    {
+        cli->get("some/url/" + std::to_string(i), call);
+    }
 
     ripc::shutdown();
 }

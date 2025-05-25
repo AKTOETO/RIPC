@@ -1,7 +1,9 @@
 #include "ripc/logger.hpp"
-#include <ctime>
-#include <vector>
+#include <chrono>
 #include <cstring>
+#include <ctime>
+#include <thread>
+#include <vector>
 
 namespace ripc
 {
@@ -80,11 +82,13 @@ namespace ripc
         std::tm tm_snapshot;
         localtime_r(&now_c, &tm_snapshot); // Потокобезопасный localtime
 
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+        auto ms = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch());
 
-        prefix << "[" << levelToString(level) << "] "
-               << std::put_time(&tm_snapshot, "%Y-%m-%d %H:%M:%S")
-               << '.' << std::setw(3) << std::setfill('0') << ms.count() << " ";
+        prefix << "[" << levelToString(level) << "] " << std::put_time(&tm_snapshot, "%Y-%m-%d %H:%M:%S") << '.'
+               << std::setw(3) << std::setfill('0') << ms.count() << " ";
+
+        // пишем thread id
+        prefix << "[TID: " << std::this_thread::get_id() << "]";
 
         // Убираем полный путь к файлу, оставляем только имя файла
         const char *last_slash = strrchr(file, '/');

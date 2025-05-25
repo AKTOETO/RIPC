@@ -1,5 +1,7 @@
 # tests/functional/CMakeLists.txt
 
+message(STATUS "=== FUNCTIONAL TESTING FILES ===")
+
 # Находим все исходные файлы тестов (.cpp) в текущем каталоге
 file(GLOB TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 

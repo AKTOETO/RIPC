@@ -5,7 +5,9 @@
 #include "types.hpp" // Общие типы, notification_data
 #include "url.hpp"
 
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <stdexcept> // Для исключений
 #include <string>
 #include <vector>
@@ -36,6 +38,11 @@ namespace ripc
         std::string m_connected_server_name; // имя сервера, к котрому подключен
         CallbackIn m_callback;               // Обработчик ответа от сервера
         bool m_is_request_sent;              // отправлен ли запрос
+        bool m_is_using_blocking;            // используется ли блокирующий режим
+        bool m_is_running;                   // работает ли еще
+        bool m_is_frozen;                    // заморожен ли поток
+        std::mutex m_lock;                   // блокировка доступа
+        std::condition_variable m_cv;        // блокиовка потока
 
         // Информация о разделяемой памяти
         Memory m_sub_mem;
@@ -85,6 +92,13 @@ namespace ripc
         bool isMapped() const;
         // Форматированная строка для вывода
         std::string getInfo() const;
+
+        /**
+         * @brief Установка состояния работы класса
+         *
+         * @param mode 1 - блокриующий режим. 0 - ассинхронный режим
+         */
+        void setBlockingMode(bool mode);
     };
 
 } // namespace ripc

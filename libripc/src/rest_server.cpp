@@ -24,29 +24,32 @@ namespace ripc
         auto ptr = std::make_shared<ReqRes>(func);
         return Server::registerCallback(
             std::move(url_pattern),
-            [ptr](const Url &, ReadBufferView &rb) {
-                LOG_INFO("setting up incoming buffer");
+            [ptr](const Url &url, ReadBufferView &rb) {
+                LOG_INFO("Calling the input callback for REST");
+                // записываем url
+                LOG_INFO("From url: ", url.getUrl().c_str());
+                auto &json = ptr->request;
+                json["url"] = nlohmann::json::array();
+                for (const auto &token : url.getTokens())
+                {
+                    std::visit([&](const auto &val) { json["url"].push_back(val); }, token);
+                }
+
+                // получаем полезную нагрузку
                 auto str = rb.getPayload();
+
+                // записываем полезную нагрузку, если она есть
                 if (str != std::nullopt && str->size() > 0 && ptr)
                 {
                     LOG_INFO("got data: %*.s", str->size(), str->data());
-                    ptr->request = nlohmann::json::parse(str->begin(), str->end());
+                    ptr->request["payload"] = nlohmann::json::parse(str->begin(), str->end());
                 }
                 else
                     LOG_INFO("There is no payload");
             },
             [ptr](WriteBufferView &wb) {
-                LOG_INFO("Calling the callback with jsons");
-                if (ptr && !ptr->request.empty())
-                {
-                    wb.setPayload(ptr->func(ptr->request).dump());
-                    LOG_INFO("There is request json");
-                }
-                else
-                {
-                    wb.setPayload(ptr->func({}).dump());
-                    LOG_INFO("There is no request json");
-                }
+                LOG_INFO("Calling the output callback for REST");
+                wb.setPayload(ptr->func(ptr->request).dump());
                 ptr->request.clear();
             });
     }

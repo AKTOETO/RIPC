@@ -153,7 +153,8 @@ namespace ripc
         }
         // throw std::runtime_error("Server limit reached.");
 
-        auto new_server = std::make_unique<Server>(getContext(), name);//std::unique_ptr<Server>(new Server(getContext(), name));
+        auto new_server =
+            std::make_unique<Server>(getContext(), name); // std::unique_ptr<Server>(new Server(getContext(), name));
         if (!new_server->init())
         {
             new_server.reset();
@@ -204,7 +205,8 @@ namespace ripc
         }
         // throw std::runtime_error("Server limit reached.");
 
-        auto new_server = std::make_unique<RESTServer>(getContext(), name);//std::unique_ptr<Server>(new RESTServer(getContext(), name));
+        auto new_server = std::make_unique<RESTServer>(
+            getContext(), name); // std::unique_ptr<Server>(new RESTServer(getContext(), name));
         if (!new_server->init())
         {
             new_server.reset();
@@ -526,27 +528,25 @@ namespace ripc
             // К серверу
             if (ntf.m_who_sends == CLIENT)
             {
-                // std::cout << "RipcEntityManager::dispatchNotification: send notification to server\n";
                 LOG_INFO("received notification from client");
                 auto it_srv = servers.find(receiver_id);
                 if (it_srv != servers.end())
                 {
                     LOG_INFO("Found server's handler");
-                    it_srv->second->handleNotification(ntf);
-                    return true;
+
+                    return it_srv->second->handleNotification(ntf);
                 }
             }
             // К клиенту
             else if (ntf.m_who_sends == SERVER)
             {
-                // std::cout << "RipcEntityManager::dispatchNotification: send notification to client\n";
                 LOG_INFO("received notification from server");
                 auto it_cli = clients.find(receiver_id);
                 if (it_cli != clients.end())
                 {
                     LOG_INFO("Found client's handler");
-                    it_cli->second->handleNotification(ntf);
-                    return true;
+
+                    return it_cli->second->handleNotification(ntf);
                 }
             }
             else
@@ -676,7 +676,15 @@ namespace ripc
 
                     if (bytes_read == sizeof(ntf))
                     {
-                        dispatchNotification(ntf); // Диспетчеризуем полное уведомление
+                        // Диспетчеризуем полное уведомление
+                        if (!dispatchNotification(ntf))
+                        {
+                            LOG_WARN("Notification wasnt dispatched correctly");
+                        }
+                        else
+                        {
+                            LOG_INFO("Notification dispatched");
+                        }
                     }
                     else if (bytes_read < 0)
                     {

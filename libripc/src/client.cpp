@@ -5,6 +5,7 @@
 #include "ripc/logger.hpp"
 #include <cstring> // memcpy, strncpy, memset
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <sys/ioctl.h>
 #include <sys/mman.h> // mmap, munmap
@@ -39,7 +40,9 @@ namespace ripc
     }
 
     // Приватный конструктор
-    Client::Client(RipcContext &ctx) : m_context(ctx), m_sub_mem(m_context), m_callback(nullptr), m_is_request_sent(0)
+    Client::Client(RipcContext &ctx)
+        : m_context(ctx), m_sub_mem(m_context), m_callback(nullptr), m_is_request_sent(false), m_is_running(true),
+          m_is_using_blocking(false), m_is_frozen(false)
     {
         // ID будет установлен в init()
         // std::cout << "Client: Basic construction." << std::endl;
@@ -84,6 +87,7 @@ namespace ripc
     Client::~Client()
     {
         LOG_INFO("Client (ID: %d destructing...", m_client_id);
+        m_is_running = false;
 
         // отменяем регистрацию сущности в драйвере
         if (ioctl(m_context.getFd(), IOCTL_CLIENT_UNREGISTER, pack_ids(m_client_id, 0)) < 0)
@@ -95,36 +99,33 @@ namespace ripc
         }
     }
 
-    // // Приватные проверки
-    // bool Client::checkInitialized() const
-    // {
-    //     if (!m_initialized)
-    //         LOG_INFO("Client (ID: %d) is not initialized");
-    //     return m_initialized;
-    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) +
-    //     ") is not initialized.");
-    // }
-    // bool Client::checkMapped() const
-    // {
-
-    //     if (!checkInitialized() || !m_sub_mem.m_is_mapped)
-    //         LOG_INFO("Client`s (ID: %d) memory is not mapped");
-    //     return checkInitialized() && m_sub_mem.m_is_mapped
-    //     // throw std::logic_error("Client (ID: " + std::to_string(m_client_id) +
-    //     ") memory not mapped.");
-    // }
-
     bool Client::call(const Url &url, CallbackIn &&in, CallbackOut &&out)
     {
-        LOG_INFO("Client::call: sending message");
         CHECK_MAPPED
+        LOG_INFO("Sending message");
 
         // проверка на ответ на предыдущий запрос
         if (m_is_request_sent)
         {
-            // std::cout << "Client::call: request was not sent" << std::endl;
-            LOG_WARN("Cant send request: there was no response from the previous request");
-            return 0;
+            // Если используется блокирующий режим
+            if (m_is_using_blocking)
+            {
+                std::unique_lock<std::mutex> lock(m_lock);
+                m_is_frozen = 1;
+                LOG_INFO("Cant send request: Client is waiting for response");
+                m_cv.wait(lock, [this] { return !m_is_frozen || !m_is_running; });
+                if (!m_is_running)
+                {
+                    LOG_WARN("Cant send request: Client stopped working");
+                    return 0;
+                }
+                LOG_INFO("Client is woked up");
+            }
+            else
+            {
+                LOG_WARN("Cant send request: there was no response from the previous request");
+                return 0;
+            }
         }
 
         // создаем буфер для записи
@@ -139,10 +140,7 @@ namespace ripc
             out(wb);
         }
         wb.finalizePayload();
-        // std::cout << "Client::call: sending message '" << wb << "' to: " << url <<
-        // std::endl;
-        LOG_INFO("Client::call: sending message '%.*s' to: %s", wb.getCurrentSize(), wb.getStr().c_str(),
-                 url.getUrl().c_str());
+        LOG_INFO("sending message '%.*s' to: %s", wb.getCurrentSize(), wb.getStr().c_str(), url.getUrl().c_str());
 
         // уведомляем драйвер
         u32 packed_id = pack_ids(m_client_id, 0);
@@ -151,8 +149,6 @@ namespace ripc
             if (ioctl(m_context.getFd(), IOCTL_CLIENT_END_WRITING, packed_id) < 0)
             {
                 LOG_ERR("Client %d: IOCTL_CLIENT_END_WRITING failed with error: %d", m_client_id, strerror(errno));
-                // perror(("Client " + std::to_string(m_client_id) + ": Warning -
-                // IOCTL_CLIENT_END_WRITING failed").c_str());
 
                 // отмечаем, что запрос не отправлен
                 m_is_request_sent = 0;
@@ -168,14 +164,20 @@ namespace ripc
         }
         else
         {
-            LOG_ERR("Client %d: Warning - Failed to pack ID for end writing notification.", m_client_id);
-            // std::cerr << "Client " << m_client_id << ": Warning - Failed to pack ID
-            // for end writing notification." << std::endl;
+            LOG_ERR("Client %d: Failed to pack ID for end writing notification.", m_client_id);
 
             // отмечаем, что запрос не отправлен
             m_is_request_sent = 0;
         }
 
+        if (m_is_request_sent)
+        {
+            LOG_INFO("Message sent");
+        }
+        else
+        {
+            LOG_INFO("Message was not sent");
+        }
         return m_is_request_sent;
     }
 
@@ -284,6 +286,13 @@ namespace ripc
         return oss.str();
     }
 
+    void Client::setBlockingMode(bool mode)
+    {
+        std::unique_lock<std::mutex> lock(m_lock);
+        LOG_INFO("set blocking mode to %s", mode ? "true" : "false");
+        m_is_using_blocking = mode;
+    }
+
     bool Client::handleNotification(const notification_data &ntf)
     {
         CHECK_INIT;
@@ -302,9 +311,6 @@ namespace ripc
 
         LOG_INFO("[Client %d Handler] Received notification:", m_client_id);
         LOG_INFO("\tType: %d from server: %d", ntf.m_type, ntf.m_reciver_id);
-        // std::cout << "[Client " << m_client_id << " Handler] Received
-        // notification:" << std::endl; std::cout << "  Type: " << ntf.m_type << ",
-        // From Server: " << ntf.m_sender_id << std::endl;
 
         switch (ntf.m_type)
         {
@@ -312,20 +318,12 @@ namespace ripc
             LOG_INFO("[Client %d Handler]: Received NEW_MESSAGE notification from "
                      "Server: %d using SubMem %d",
                      m_client_id, ntf.m_sender_id, ntf.m_sub_mem_id)
-            // std::cout << "[Client " << m_client_id
-            //           << " Handler]: Received NEW_MESSAGE notification from Server: "
-            //           << ntf.m_sender_id << " using SubMem " << ntf.m_sub_mem_id
-            //           << std::endl;
             return dispatchNewMessage(ntf);
 
         case REMOTE_DISCONNECT:
             LOG_INFO("[Client %d Handler]: Received REMOTE_DISCONNECT notification "
                      "from Server: %d using SubMem %d",
                      m_client_id, ntf.m_sender_id, ntf.m_sub_mem_id)
-            // std::cout << "[Client " << m_client_id
-            //           << " Handler]: Received REMOTE_DISCONNECT from Server: "
-            //           << ntf.m_sender_id << " using SubMem " << ntf.m_sub_mem_id
-            //           << std::endl;
             return dispatchRemoteDisconnect(ntf);
 
         default:
@@ -353,6 +351,7 @@ namespace ripc
 
             // обнуляем обработчик
             m_callback = nullptr;
+            LOG_INFO("Callback called");
         }
         else
         {
@@ -361,17 +360,25 @@ namespace ripc
             // std::endl;
         }
         m_is_request_sent = 0;
+
+        // Уведомление основного потока об обработке ответа на запрос
+        if (m_is_using_blocking && m_is_frozen)
+        {
+            std::unique_lock<std::mutex> lock(m_lock);
+            LOG_INFO("Waking up client");
+            m_is_frozen = false;
+            m_cv.notify_all();
+        }
+
         return true;
     }
 
     bool Client::dispatchRemoteDisconnect(const notification_data &ntf)
     {
         CHECK_MAPPED;
-        // checkInitialized();
-        // checkMapped();
 
         LOG_INFO("Client %d: unmapping memory", m_client_id);
-        // std::cout << "Client::dispatchRemoteDisconnect: unmapping memory\n";
+        m_is_running = false;
 
         // очистка полей
         m_connected_server_name.clear();

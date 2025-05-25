@@ -22,6 +22,15 @@ file(GLOB LIB_HEADERS include/ripc/*.hpp)
 # STATIC - библиотека будет вкомпилирована в конечный исполняемый файл
 add_library(ripc STATIC ${LIB_SOURCES} ${LIB_HEADERS})
 
+
+# Определяем макрос DEBUG только в отладочном режиме
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(ripc PRIVATE _DEBUG)
+    message(STATUS "Debug build: DEBUG macro defined.")
+else()
+    message(STATUS "Non-Debug build.")
+endif()
+
 # Определяем пути для заголовочных файлов:
 target_include_directories(ripc
     PUBLIC

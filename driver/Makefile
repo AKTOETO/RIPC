@@ -48,9 +48,14 @@ modules modules_install clean help:
 # (они не будут использоваться CMake)
 
 b:
-	@echo "[Driver Makefile] Building (manual target 'b')..."
+	@echo "[Driver Makefile] Building in Release mode"
 	@echo FLAGS: $(ccflags-y)
 	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y)"
+
+bd:
+	@echo "[Driver Makefile] Building in Debug"
+	@echo FLAGS: $(ccflags-y)
+	$(MAKE) CC=$(CC) -C $(KERNELDIR) M=$(CURDIR) modules EXTRA_CFLAGS="$(ccflags-y) -D_DEBUG"
 
 c:
 	@echo "[Driver Makefile] Cleaning (manual target 'c')..."
