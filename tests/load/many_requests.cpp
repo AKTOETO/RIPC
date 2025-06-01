@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-class ManyRequests : public RipcTest
+class ManyClients : public RipcTest
 {
   protected:
     void runTest(int requestCount, int payloadSize)
@@ -54,42 +54,42 @@ class ManyRequests : public RipcTest
     }
 };
 
-TEST_F(ManyRequests, 100)
+TEST_F(ManyClients, 100)
 {
     runTest(50, 100);
 }
 
-TEST_F(ManyRequests, 200)
+TEST_F(ManyClients, 200)
 {
     runTest(50, 150);
 }
 
-TEST_F(ManyRequests, 300)
+TEST_F(ManyClients, 300)
 {
     runTest(50, 300);
 }
 
-TEST_F(ManyRequests, 400)
+TEST_F(ManyClients, 400)
 {
     runTest(50, 400);
 }
 
-TEST_F(ManyRequests, 500)
+TEST_F(ManyClients, 500)
 {
     runTest(50, 500);
 }
 
-TEST_F(ManyRequests, 1000)
+TEST_F(ManyClients, 1000)
 {
     runTest(50, 1000);
 }
 
-TEST_F(ManyRequests, 2000)
+TEST_F(ManyClients, 2000)
 {
     runTest(50, 2000);
 }
 
-TEST_F(ManyRequests, 2500)
+TEST_F(ManyClients, 2500)
 {
     runTest(50, 2500);
 }

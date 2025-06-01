@@ -21,7 +21,7 @@ int main()
     j["array"] = {1, 2, 3};
 
     // отправляем это все на сервер
-    cli->post("some/url/1", j);
+    //cli->post("some/url/1", j);
 
     auto call = [](const nlohmann::json &json) {
         static int i = 0;
@@ -30,10 +30,14 @@ int main()
     };
 
     // получаем что-то с сервера
-    for (int i = 0; i < 10; i++)
-    {
-        cli->get("some/url/" + std::to_string(i), call);
-    }
+    // for (int i = 0; i < 10; i++)
+    // {
+    //     cli->get("some/url/" + std::to_string(i), call);
+    // }
+    cli->get("some/url/1", call);
+    cli->get("some/url/2", call);
+    cli->get("some/url/3", call);
+    cli->get("some/url/4", call);
 
     ripc::shutdown();
 }

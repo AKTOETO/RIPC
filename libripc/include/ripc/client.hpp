@@ -40,7 +40,6 @@ namespace ripc
         bool m_is_request_sent;              // отправлен ли запрос
         bool m_is_using_blocking;            // используется ли блокирующий режим
         bool m_is_running;                   // работает ли еще
-        bool m_is_frozen;                    // заморожен ли поток
         std::mutex m_lock;                   // блокировка доступа
         std::condition_variable m_cv;        // блокиовка потока
 

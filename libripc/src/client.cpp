@@ -42,7 +42,7 @@ namespace ripc
     // Приватный конструктор
     Client::Client(RipcContext &ctx)
         : m_context(ctx), m_sub_mem(m_context), m_callback(nullptr), m_is_request_sent(false), m_is_running(true),
-          m_is_using_blocking(false), m_is_frozen(false)
+          m_is_using_blocking(false)
     {
         // ID будет установлен в init()
         // std::cout << "Client: Basic construction." << std::endl;
@@ -102,7 +102,7 @@ namespace ripc
     bool Client::call(const Url &url, CallbackIn &&in, CallbackOut &&out)
     {
         CHECK_MAPPED
-        LOG_INFO("Sending message");
+        LOG_INFO("calling smth");
 
         // проверка на ответ на предыдущий запрос
         if (m_is_request_sent)
@@ -111,9 +111,8 @@ namespace ripc
             if (m_is_using_blocking)
             {
                 std::unique_lock<std::mutex> lock(m_lock);
-                m_is_frozen = 1;
                 LOG_INFO("Cant send request: Client is waiting for response");
-                m_cv.wait(lock, [this] { return !m_is_frozen || !m_is_running; });
+                m_cv.wait(lock, [this] { return !m_is_request_sent || !m_is_running; });
                 if (!m_is_running)
                 {
                     LOG_WARN("Cant send request: Client stopped working");
@@ -178,6 +177,22 @@ namespace ripc
         {
             LOG_INFO("Message was not sent");
         }
+
+        // Если используется блокирующий режим и мы заморожены
+        if (m_is_using_blocking && m_is_request_sent)
+        {
+            std::unique_lock<std::mutex> lock(m_lock);
+            LOG_INFO("waiting for waking up");
+            m_cv.wait(lock, [this] { return !m_is_request_sent || !m_is_running; });
+            if (!m_is_running)
+            {
+                LOG_INFO("Client stopped working");
+                return 0;
+            }
+            LOG_INFO("Client is woked up");
+            return 1;
+        }
+
         return m_is_request_sent;
     }
 
@@ -362,11 +377,10 @@ namespace ripc
         m_is_request_sent = 0;
 
         // Уведомление основного потока об обработке ответа на запрос
-        if (m_is_using_blocking && m_is_frozen)
+        if (m_is_using_blocking)
         {
             std::unique_lock<std::mutex> lock(m_lock);
             LOG_INFO("Waking up client");
-            m_is_frozen = false;
             m_cv.notify_all();
         }
 

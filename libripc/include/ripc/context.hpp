@@ -1,9 +1,9 @@
 #ifndef RIPC_CONTEXT_HPP
 #define RIPC_CONTEXT_HPP
 
-#include <string>
-#include <stdexcept> // std::runtime_error, std::logic_error
 #include <iostream>  // Отладочный вывод
+#include <stdexcept> // std::runtime_error, std::logic_error
+#include <string>
 
 namespace ripc
 {
@@ -12,7 +12,7 @@ namespace ripc
 
     class RipcContext
     {
-    private:
+      private:
         friend class RipcEntityManager; // Только менеджер создает и управляет
 
         int device_fd;
@@ -32,7 +32,7 @@ namespace ripc
         bool closeDevice();
         bool determinePageSize();
 
-    public:
+      public:
         // Деструктор закрывает устройство
         ~RipcContext();
 

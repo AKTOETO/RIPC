@@ -1,4 +1,3 @@
-#include "ripc/logger.hpp"
 #include <ripc/ripc.hpp>
 
 int main()
