@@ -67,9 +67,6 @@ namespace ripc
         std::shared_ptr<Server::ConnectionInfo> findConnection(int client_id) const;
         const std::pair<const int, std::shared_ptr<Memory>> &findOrCreateSHM(int shm_id);
 
-        // Приватный метод для проверки состояния
-        // void checkInitialized() const;
-
         // Запрет копирования/присваивания
         Server(const Server &) = delete;
         Server &operator=(const Server &) = delete;

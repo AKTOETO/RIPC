@@ -2,7 +2,7 @@
 
 int main()
 {
-    //ripc::setLogLevel(ripc::LogLevel::WARNING);
+    // ripc::setLogLevel(ripc::LogLevel::WARNING);
     ripc::initialize();
 
     // создадим клиент и сервер и подключимся клиентом к серверу

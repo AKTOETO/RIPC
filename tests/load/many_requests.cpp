@@ -61,7 +61,7 @@ TEST_F(ManyClients, 100)
 
 TEST_F(ManyClients, 200)
 {
-    runTest(50, 150);
+    runTest(50, 200);
 }
 
 TEST_F(ManyClients, 300)
